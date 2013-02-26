@@ -29,6 +29,8 @@
 #ifndef ETHERBONE_H
 #define ETHERBONE_H
 
+#define DEBUG_EB 		1
+
 #define EB_PROTOCOL_VERSION	1
 #define EB_ABI_VERSION		0x02	/* incremented on incompatible changes */
 
@@ -264,6 +266,11 @@ extern "C" {
 /****************************************************************************/
 /*                                 C99 API                                  */
 /****************************************************************************/
+
+extern int mprintf(char const *format, ...);
+
+#define dbgprint(fmt, ...) \
+            do { if (DEBUG_EB) mprintf(fmt, ##__VA_ARGS__); } while (0)
 
 /* Convert status to a human-readable printable string */
 EB_PUBLIC

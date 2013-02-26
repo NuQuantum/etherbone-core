@@ -31,7 +31,9 @@
 #define EB_NEED_BIGENDIAN_64 1
 
 #include <string.h>
+#include <unistd.h>
 
+#include "../etherbone.h"
 #include "../glue/operation.h"
 #include "../glue/cycle.h"
 #include "../glue/device.h"
@@ -55,6 +57,9 @@ static void EB_mWRITE(uint8_t* wptr, eb_data_t val, int alignment) {
  * Thus, the EB_<TYPE>(x) conversions appear late and near their use.
  */
 eb_status_t eb_device_flush(eb_device_t devicep) {
+  
+  dbgprint("Entering eb_device_flush\n");
+
   struct eb_socket* socket;
   struct eb_socket_aux* aux;
   struct eb_device* device;
@@ -69,13 +74,14 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
   eb_format_t format, size, endian;
   eb_address_t address_mask;
   uint8_t buffer[sizeof(eb_max_align_t)*(255+255+1+1)+8]; /* big enough for worst-case record */
+  dbgprint("Allocated 520 byte record buffer\n");
   uint8_t * wptr, * cptr, * eob;
   int alignment, record_alignment, header_alignment, stride, mtu, readback, has_reads;
   
   device = EB_DEVICE(devicep);
   transport = EB_TRANSPORT(device->transport);
   width = device->widths;
-  
+   dbgprint("Device and Transport created.\n");
   if (device->link == EB_NULL) return EB_FAIL;
   
   /*
@@ -98,11 +104,13 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
   /* Determine alignment and masking sets */
   address_mask = ~(eb_address_t)0;
   address_mask >>= (sizeof(eb_address_t) - addr) << 3;
-  
+ dbgprint("Alignment and mask calculated.\n");
+
   /* Begin buffering */
   tops = &eb_transports[transport->link_type];
   link = EB_LINK(device->link);
   tops->send_buffer(transport, link, 1);
+  dbgprint("Begun buffering ...\n");
   
   /* Non-streaming sockets need a header */
   mtu = tops->mtu;
@@ -118,16 +126,28 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
     cptr = wptr = &buffer[0];
     eob = &buffer[sizeof(buffer)];
   }
-  
+    dbgprint("Header...\n");
+  dbgprint("EB_NULL: %d\n", EB_NULL);
+
   /* Invert the list of cycles */
   prevp = EB_NULL;
   for (cyclep = device->un_link.ready; cyclep != EB_NULL; cyclep = nextp) {
+    dbgprint("Traversing cycle list...\n");
+    dbgprint("Before inversion:\n");
+    dbgprint("CycPtr: %d, PrevP: %d, NextP: %d\n", cyclep, prevp, nextp);
+    
+
     cycle = EB_CYCLE(cyclep);
     nextp = cycle->un_link.next;
     cycle->un_link.next = prevp;
     prevp = cyclep;
+
+   dbgprint("After inversion:\n");
+    dbgprint("CycPtr: %d, PrevP: %d, NextP: %d\n", cyclep, prevp, nextp);
+    usleep(500000);
   }
-  
+  dbgprint("Cycle List inverted.\n");
+
   has_reads = 0;
   for (cyclep = prevp; cyclep != EB_NULL; cyclep = nextp) {
     struct eb_operation* operation;
@@ -141,10 +161,12 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
     
     cycle = EB_CYCLE(cyclep);
     nextp = cycle->un_link.next;
-    
+
+
     /* Record the device which answers */
     cycle->un_link.device = devicep;
-    
+      dbgprint("OOM check\n");
+
     /* Deal with OOM cases */
     if (cycle->un_ops.dead == cyclep) {
       if (cycle->callback)
@@ -159,9 +181,10 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
         (*cycle->callback)(cycle->user_data, cycle->un_link.device, EB_NULL, EB_OK);
       eb_free_cycle(cyclep);
       continue;
-    }
+     }
+dbgprint("area 1\n");
     
-    /* Are there out of range widths? */
+ /* Are there out of range widths? */
     reason = EB_OK; /* silence warning */
     for (operationp = cycle->un_ops.first; operationp != EB_NULL; operationp = operation->next) {
       operation = EB_OPERATION(operationp);
@@ -195,7 +218,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
         reason = EB_ADDRESS;
         break;
       }
-      
+      dbgprint("Area 2\n");
+
       /* Is the address too big for a cfg op? */
       if ((operation->flags & EB_OP_CFG_SPACE) != 0 &&
           (operation->address & (0xFFFFU - (size - 1))) != operation->address) {
@@ -233,6 +257,7 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
       eb_free_cycle(cyclep);
       continue;
     }
+dbgprint("Area 3\n");
 
     /* Refresh pointers typically needed per cycle */
     device = EB_DEVICE(devicep);
@@ -250,7 +275,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
     } else {
       maxops = -1; 
     }
-    
+      dbgprint("Begin formatting\n");
+
     /* Begin formatting the packet into records */
     ops = 0;
     readback = 0;
@@ -284,7 +310,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
         low_addr = bwa & (data-1);
         
         if (wcfg == 0) ++ops;
-        
+        dbgprint("Area 4\n");
+
         /* How many writes can we chain? must be either FIFO or sequential in same address space */
         if (ops >= maxops ||
             scanp == EB_NULL ||
@@ -337,6 +364,7 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
           }
         }
       }
+dbgprint("Area 5\n");
 
       /* Next, how many reads follow? */
       /* First pack writes into a record, if any */
@@ -377,7 +405,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
       } else {
         rxcount = rcount;
       }
-      
+      dbgprint("Area 6\n");
+
       /* Compute total request length */
       total = (wcount  > 0) + wcount
             + (rxcount > 0) + rxcount;
@@ -414,7 +443,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
             cptr = &buffer[header_alignment];
             wptr = cptr + keep;
           }
-          
+          dbgprint("Area 7\n");
+
           /* Test for cycle overflow of MTU */
           if (length > eob - wptr) {
             /* Blow up in the face of the user */
@@ -458,7 +488,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
       wptr[2] = wcount;
       wptr[3] = rxcount;
       wptr += record_alignment;
-      
+      dbgprint("Area 8\n");
+
       /* Fill in the writes */
       if (wcount > 0) {
         operation = EB_OPERATION(operationp);
@@ -506,7 +537,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
         }
       }
     }
-    
+    dbgprint("Area 9\n");
+
     /* Did we finish the while loop? */
     if (cycle_end) {
       if (readback == 0) {
@@ -537,7 +569,8 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
       cptr = wptr;
     }
   }
-  
+  dbgprint("Area 10\n");
+
   /* Refresh pointer derferences */
   device = EB_DEVICE(devicep);
   transport = EB_TRANSPORT(device->transport);
@@ -559,6 +592,7 @@ eb_status_t eb_device_flush(eb_device_t devicep) {
   
   /* Clear the queue */
   device->un_link.ready = EB_NULL;
-  
+  dbgprint("Leaving eb_device_flush\n");
+
   return EB_OK;
 }
