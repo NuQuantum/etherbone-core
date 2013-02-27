@@ -107,7 +107,7 @@ eb_status_t eb_lm32_udp_open(struct eb_transport* transportp, const char* port) 
   eb_lm32_sock_t* sock4;
   
   /* Configure socket filter */
-  memset(&saddr, 0, sizeof(saddr));
+  memset(&saddr, 1, sizeof(saddr));
   strcpy(saddr.if_name, port);
   
   saddr.ethertype = htons(0x0800);	/* IP */
@@ -121,6 +121,8 @@ eb_status_t eb_lm32_udp_open(struct eb_transport* transportp, const char* port) 
   
   transport = (struct eb_lm32_udp_transport*)transportp;
   transport->socket4 = sock4;
+
+  	
   dbgprint("Leaving eb_lm32_udp_open\n");
   return EB_OK;
 }
@@ -161,7 +163,8 @@ dbgprint("Entering eb_lm32_udp_connect\n");
 							pch = strsplit(pch,"/");
 							if(pch != NULL)
 							{
-								addressStrToBytes(pch, link->port, PORT);
+								//addressStrToBytes(pch, link->port, PORT);
+								link->port = atoi (pch);
 								stat = EB_OK;
 								dbgprint("Mac, Ip and Port seem correct.\n");
 								dbgprint("Found:\n");
@@ -262,26 +265,16 @@ EB_PRIVATE void eb_lm32_udp_send(struct eb_transport* transportp, struct eb_link
   	link = (struct eb_lm32_udp_link*)linkp;
 	uint8_t tx_buf[1500];
 	dbgprint("Allocated 1500 byte tx buffer\n");
-	dbgprint("Mac, Ip and Port seem correct.\n");
 	dbgprint("Found:\n");
 	dbgprint("MAC:  %x:%x:%x:%x:%x:%x\n", 
 		link->mac[0],link->mac[1],link->mac[2],link->mac[3],link->mac[4],link->mac[5]);
-	dbgprint("IPV4: %x:%x:%x:%x\n", 
-		link->ipv4[0],link->ipv4[1],link->ipv4[2],link->ipv4[3]);
-	dbgprint("Port: %d\n", link->port);
-
+	
 	//set target mac
-	memcpy(&saddr.mac_dest[0], link->mac, 6);	
-
+	memcpy(saddr.mac, link->mac, 6);
 	createUdpIpHdr(link, tx_buf, buf, len); 	//create UDP/IP header at the beginning of the tx buffer and returns ptr to end
 	memcpy(&tx_buf[UDP_END], buf, len);				//copy data buffer into tx buffer
 
-	dbgprint("New Tx_Buffer Content: \n");
-	for (i=0;i<64; i++) dbgprint(" %2x", tx_buf[i]);
-	dbgprint("\n");
-
 	dbgprint("Trying to send tx buffer\n");
-	//send data buffer	
 	ptpd_netif_sendto(transport->socket4, &saddr, &tx_buf[0], (UDP_IP_HDR_LEN+len), 0); 
 	dbgprint("Leaving eb_lm32_udp_send\n");
 }
@@ -376,7 +369,7 @@ static uint8_t* createUdpIpHdr(struct eb_lm32_udp_link* linkp, uint8_t* hdrbuf, 
 	hdrbuf[IP_FLG_FRG + 0]  = 0x00;
 	hdrbuf[IP_FLG_FRG + 1]  = 0x00;	
 	hdrbuf[IP_PROTO]	= 0x11; // UDP
-	hdrbuf[IP_TTL]		= 0x01;
+	hdrbuf[IP_TTL]		= 0x10;
 	hdrbuf[IP_CHKSUM + 0]  	= 0x00;
 	hdrbuf[IP_CHKSUM + 1]	= 0x00;
 
@@ -388,9 +381,12 @@ static uint8_t* createUdpIpHdr(struct eb_lm32_udp_link* linkp, uint8_t* hdrbuf, 
 	hdrbuf[IP_CHKSUM + 1]	= (uint8_t)(ipchksum);
 
 	// ------------- UDP ------------
-	
+	dbgprint("IPV4: %x:%x:%x:%x\n", 
+		link->ipv4[0],link->ipv4[1],link->ipv4[2],link->ipv4[3]);
+	dbgprint("Port: %x\n", link->port);
+
 	memcpy(hdrbuf + UDP_SPP, &myPort,2);
-	memcpy(hdrbuf + UDP_DPP, link->port,2);
+	memcpy(hdrbuf + UDP_DPP, &link->port, 2);
 	hdrbuf[UDP_LEN + 0]  = (uint8_t)(udplen >> 8); //udp length after payload
 	hdrbuf[UDP_LEN + 1]  = (uint8_t)(udplen);
 	hdrbuf[UDP_CHKSUM + 0]  = 0x00;
@@ -405,7 +401,7 @@ static uint8_t* createUdpIpHdr(struct eb_lm32_udp_link* linkp, uint8_t* hdrbuf, 
 	dbgprint("\n");
 
 
-
+	dbgprint("leaving udp/ip hdr creation\n");	
 
 	
 	return hdrbuf;
@@ -463,6 +459,7 @@ static  unsigned char* addressStrToBytes(const char* addressStr, unsigned char* 
 		del 	  = '.';
 	}
 	
+
 	
 	else{
 	 return NULL;	

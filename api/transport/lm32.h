@@ -101,7 +101,7 @@ struct eb_lm32_udp_link {
   /* Contents must fit in 12 bytes */
   uint8_t mac[6];
   uint8_t ipv4[4];
-  uint8_t port[2];		
+  uint16_t port;		
 };
 
 /* The table of all supported transports */
