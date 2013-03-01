@@ -310,38 +310,47 @@ static uint16_t myIP_checksum(uint8_t *buf, int shorts)
 	return (uint16_t)sum;
 }
 
+
+
 //Protocol header functions
 static uint16_t udp_checksum(const uint8_t *hdrbuf, const uint8_t *databuf, uint16_t len)
 {
 	//Prep udp checksum	
 	int i;
-	uint32_t sum;
+	uint32_t sum, pseudosum, tmp;
 
 	sum = 0;
+	pseudosum = 0;
+
+	dbgprint("Len %4x\n", len);
 
 	//calc chksum for data 
-	for (i = 0; i < (len & 0xfffe); ++i)
-		sum += (databuf[i+0]<<8) | (databuf[i+1]);
-
-	if(len & 0x01) 	sum += databuf[i];// if len is odd, pad the last byte and add
+	for (i = 0; i < (len); i+=2)
+	{
+		tmp = ((uint32_t)(databuf[i+0]<<8)&0xFF00) | ((uint32_t)databuf[i+1]&0x00FF);
+      sum += tmp;
+   }
+	if(len & 0x01) 	sum += (((uint32_t)databuf[i+1])<<8);// if len is odd, pad the last byte and add
 	
 	//add pseudoheader
-	sum += (hdrbuf[IP_SPA+0]<<8) | (hdrbuf[IP_SPA+1]);
-	sum += (hdrbuf[IP_SPA+2]<<8) | (hdrbuf[IP_SPA+3]);
-	sum += (hdrbuf[IP_DPA+0]<<8) | (hdrbuf[IP_DPA+1]);
-	sum += (hdrbuf[IP_DPA+2]<<8) | (hdrbuf[IP_DPA+3]);
-	sum += (uint16_t)hdrbuf[IP_PROTO];
+	pseudosum +=  ((hdrbuf[IP_SPA+0]<<8)&0xFF00) | ((hdrbuf[IP_SPA+1])&0x00FF);
+   pseudosum += ((hdrbuf[IP_SPA+2]<<8)&0xFF00) | ((hdrbuf[IP_SPA+3])&0x00FF);
+   pseudosum += ((hdrbuf[IP_DPA+0]<<8)&0xFF00) | ((hdrbuf[IP_DPA+1])&0x00FF);
+   pseudosum += ((hdrbuf[IP_DPA+2]<<8)&0xFF00) | ((hdrbuf[IP_DPA+3])&0x00FF);
+   pseudosum += (hdrbuf[IP_PROTO] & 0x00FF);
+   
+   pseudosum += ((hdrbuf[UDP_SPP+0]<<8)&0xFF00) | ((hdrbuf[UDP_SPP+1])&0x00FF);
+	pseudosum += ((hdrbuf[UDP_DPP+0]<<8)&0xFF00) | ((hdrbuf[UDP_DPP+1])&0x00FF);
+	pseudosum += ((hdrbuf[UDP_LEN+0]<<8)&0xFF00) | ((hdrbuf[UDP_LEN+1])&0x00FF);
+	pseudosum += ((hdrbuf[UDP_CHKSUM+0]<<8)&0xFF00) | (hdrbuf[UDP_CHKSUM+1]&0x00FF);
 	
-	sum += (hdrbuf[UDP_SPP+0]<<8) | (hdrbuf[UDP_SPP+1]);
-	sum += (hdrbuf[UDP_DPP+0]<<8) | (hdrbuf[UDP_DPP+1]);
-	sum += (hdrbuf[UDP_LEN+0]<<8) | (hdrbuf[UDP_LEN+1]);
-	sum += (hdrbuf[UDP_CHKSUM+0]<<8) | (hdrbuf[UDP_CHKSUM+1]);
-
-	//add carries and return complement
+   sum += pseudosum + len + 8;
+	
+   //add carries and return complement
 	sum = (sum >> 16) + (sum & 0xffff);
-	sum += (sum >> 16);
-
+   sum += (sum >> 16);
 	sum = (~sum & 0xffff);
+	dbgprint("UDP inv %x\n", sum);
 	return (uint16_t)sum;
 }
 
