@@ -1,194 +1,210 @@
-entity eb_framer is
-  port(
-    clk_i     : in  std_logic;
-    rst_n_i   : in  std_logic;
+--! @file eb_master_top.vhd
+--! @brief Parses WB Operations and generates meta data for EB records 
+--!
+--! Copyright (C) 2013-2014 GSI Helmholtz Centre for Heavy Ion Research GmbH 
+--!
+--! Important details about its implementation
+--! should go in these comments.
+--!
+--! @author Mathias Kreider <m.kreider@gsi.de>
+--!
+--------------------------------------------------------------------------------
+--! This library is free software; you can redistribute it and/or
+--! modify it under the terms of the GNU Lesser General Public
+--! License as published by the Free Software Foundation; either
+--! version 3 of the License, or (at your option) any later version.
+--!
+--! This library is distributed in the hope that it will be useful,
+--! but WITHOUT ANY WARRANTY; without even the implied warranty of
+--! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+--! Lesser General Public License for more details.
+--!  
+--! You should have received a copy of the GNU Lesser General Public
+--! License along with this library. If not, see <http://www.gnu.org/licenses/>.
+---------------------------------------------------------------------------------
 
-    src_i     : in  t_wrf_src_in;									-- interface to NIC mux
-    src_o    	: out t_wrf_src_out;
+--! Standard library
+library IEEE;
+--! Standard packages   
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
-		wr_adr_i	: in std_logic_vector(c_wishbone_data_width-1 downto 0);		
-		rd_adr_i	: in std_logic_vector(c_wishbone_data_width-1 downto 0);
-		mtu_i			: natural;
+library work;
+use work.wishbone_pkg.all;
+use work.eb_internals_pkg.all;
+use work.eb_hdr_pkg.all;
+use work.etherbone_pkg.all;
 
-    bridge_slave_o		: out t_wishbone_slave_out;	-- bridge interface
-    bridge_slave_i  	: in  t_wishbone_slave_in
+entity eb_master_top is
+port(
+  clk_i       : in  std_logic;
+  rst_n_i     : in  std_logic;
 
-end eb_framer;
+  slave_i     : in  t_wishbone_slave_in;
+  slave_o     : out t_wishbone_slave_out;
+  
+  my_mac_o    : out std_logic_vector(47 downto 0);
+  my_ip_o     : out std_logic_vector(31 downto 0);
+  my_port_o   : out std_logic_vector(15 downto 0);
+  
+  his_mac_o   : out std_logic_vector(47 downto 0); 
+  his_ip_o    : out std_logic_vector(31 downto 0);
+  his_port_o  : out std_logic_vector(15 downto 0); 
+  length_o    : out std_logic_vector(15 downto 0);
+  
+  adr_hi_o    : std_logic_vector(c_wishbone_data_width-1 downto 0);
+  eb_opt_o    : std_logic_vector(c_wishbone_data_width-1 downto 0)
+);
+end eb_master_top;
 
-architecture rtl of eb__framer is
+architecture rtl of eb_master_top is
 
---signals
-signal push : std_logic;
+constant c_ctrl_reg_spc_width : natural := 5; --fix me: need log2 function
 
--- FIFO connectors
-signal adrdat_fifo_q : std_logic_vector(c_wishbone_data_width-1 downto 0);
-signal adrdat_fifo_d : std_logic_vector(c_wishbone_address_width-1 downto 0);
-signal adrdat_fifo_push : std_logic;
-signal adrdat_fifo_pop : std_logic;
-signal adrdat_fifo_clr : std_logic;
+subtype t_r_adr is natural range 0 to 2**c_ctrl_reg_spc_width-1;
+--Register map
+constant c_RESET        : t_r_adr := 0;                 --wo
+constant c_STATUS       : t_r_adr := c_RESET        +1; --rw
+constant c_SRC_MAC_HI   : t_r_adr := c_STATUS       +1; --rw
+constant c_SRC_MAC_LO   : t_r_adr := c_SRC_MAC_HI   +1; --rw
+constant c_SRC_IPV4     : t_r_adr := c_SRC_MAC_LO   +1; --rw
+constant c_SRC_UDP_PORT : t_r_adr := c_SRC_IPV4     +1; --rw
+constant c_DST_MAC_HI   : t_r_adr := c_SRC_UDP_PORT +1; --rw
+constant c_DST_MAC_LO   : t_r_adr := c_DST_MAC_HI   +1; --rw
+constant c_DST_IPV4     : t_r_adr := c_DST_MAC_LO   +1; --rw
+constant c_DST_UDP_PORT : t_r_adr := c_DST_IPV4     +1; --rw
+constant c_MTU          : t_r_adr := c_DST_UDP_PORT +1; --rw
+constant c_OPA_HI       : t_r_adr := c_MTU          +1; --rw
+constant c_OPA_MSK      : t_r_adr := c_OPA_HI       +1; --rw
+constant c_RBA_HI       : t_r_adr := c_OPA_MSK      +1; --rw
+constant c_RBA_MSK      : t_r_adr := c_RBA_HI       +1; --rw
+constant c_WOA_BASE     : t_r_adr := c_RBA_MSK      +1; --ro
+constant c_ROA_BASE     : t_r_adr := c_WOA_BASE     +1; --ro
+constant c_EB_OPT       : t_r_adr := c_ROA_BASE     +1; --rw
+constant c_LAST         : t_r_adr := c_EB_OPT; 
+
+subtype t_reg is std_logic_vector(c_wishbone_data_width-1 downto 0);
+type t_ctrl is array(0 to c_LAST) of t_reg;
+
+signal r_ctrl   : t_ctrl;
+signal r_ack    : std_logic;
+signal r_err    : std_logic;
+signal r_stall  : std_logic;
+signal r_rst_n  : std_logic;
+signal push     : std_logic;
 
 
 
---registers
-signal r_bridge_slave : t_wishbone_slave_in;
-signal r_stall 		: std_logic;
-signal r_last_cyc : std_logic;
-signal r_last_we 	: std_logic;	
-signal r_last_adr : std_logic_vector(c_wishbone_address_width-1 downto 0);
-signal r_adr_chg	: std_logic;
-signal r_rec_hdr 	: t_rec_hdr;
-signal r_eb_hdr		: t_eb_hdr;
-
---- main fsm & Source selector MUX -----------------------------------------------
-type t_state is (S_NOP, S_PAD, S_EB_HDR, S_R_HDR, S_WADR, S_WRITE, S_RADR, S_READ);
-signal r_state : t_state;
-
-
-
-push <= bridge_slave_i.cyc and bridge_slave_i.stb and not r_stall;
-
-process p_wb_ack(clk_i)
 begin
-	if rising_edge(clk_i) then
-		bridge_slave_o.ack	<= push;
-	end if;			 
-end;
+
+--SLAVE IF
+slave_o.ack   <= r_ack;
+slave_o.err   <= r_err;
+slave_o.stall <= r_stall;
+slave_o.int   <= '0';
+slave_o.rty   <= '0';
+push <= slave_i.cyc and slave_i.stb and r_stall;
+
+--CTRL REGs
+his_mac_o   <= r_ctrl(c_DST_MAC_HI) & r_ctrl(c_DST_MAC_HI)(31 downto 16);
+his_ip_o    <= r_ctrl(c_DST_IPV4);
+his_port_o  <= r_ctrl(c_DST_UDP_PORT)(s_his_port'left downto 0);
+my_mac_o    <= r_ctrl(c_SRC_MAC_HI) & r_ctrl(c_SRC_MAC_HI)(31 downto 16);
+my_ip_o     <= r_ctrl(c_SRC_IPV4);
+my_port_o   <= r_ctrl(c_SRC_UDP_PORT)(s_my_port'left downto 0);
+length_o    <= r_ctrl(c_MTU)(s_length'left downto 0));
+adr_hi_o    <= r_ctrl(c_OPA_HI);
+eb_opt_o    <= r_ctrl(c_EB_OPT);
 
 
---- ADR/DAT FIFO and MUX ---------------------------------------------------------
-with bridge_slave_i.we select
-adrdat_fifo_d	<= 	bridge_slave_i.dat when '1',
-									bridge_slave_i.adr when others; 	
+p_wb_if : process (clk_i, rst_n_i) is
+variable v_adr : t_r_adr;
 
-adrdat_fifo_push 	<= push;
-adrdat_fifo_pop <= 	'1' when (state = S_WRITE) or (state = S_READ);
-										'0' when others;
-adrdat_fifo_clr		<= (not bridge_slave_i.cyc and trn_done);
-----------------------------------------------------------------------------------
+procedure wr( adr   : in natural := 1;
+              msk   : in std_logic_vector(c_wishbone_data_width-1 downto 0) := x"FFFFFFFF"
+                    ) is
+begin
+  r_ctrl(adr) <= slave_i.dat and msk;
+  r_ack       <= '1'; 
+end procedure wr;
 
+procedure rd( adr   : in natural := 1;
+              msk   : in std_logic_vector(c_wishbone_data_width-1 downto 0) := x"FFFFFFFF"
+                    ) is
+begin
+  slave_o.dat <=    r_ctrl(adr) and msk;
+  r_ack       <= '1'; 
+end procedure rd;
 
-
-TX_MUX: with state select
-	tx_fifo_d <= 	adrdat_fifo_q 	when S_WRITE | S_READ,
-								r_eb_hdr				when S_EB_HDR,
-								r_r_hdr					when S_R_HDR, 			
-								r_wadr					when S_RADR,	
-								r_radr					when S_WADR,
-								(others => '0')	when others;
-	
---tx_fifo_push 		<=  '1' when (state /= S_WRITE) or (state = S_READ);
---										'0' when others;
-----------------------------------------------------------------------------------
-
-
-
-process p_register_io(clk_i, rst_n_i)
 begin
 	if rst_n_i = '0' then
-		r_wr_adr_chg	<= '0';
+	 slave_o.dat   <= (others => '0');
 	elsif rising_edge(clk_i) then
-		r_last_cyc 	<= bridge_slave_i.cyc;
-		r_last_we 	<= bridge_slave_i.we;	
-		r_last_dat  <= bridge_slave_i.dat;	 	
-		r_last_adr	<= unsigned(bridge_slave_i.adr);
-		r_wr_adr_chg	<= (r_wr_adr_chg or (slave_i.we = '1' and (unsigned(slave_i.adr) /= (r_last_adr)))) and (slave_i.cyc and not r_push_hdr);
-	end if;
-end;
-
-
-
-
-process p_wb_cfg(clk_i, rst_n_i)
---latch meta data from config register
-begein
-
-	if rst_n_i = '0' then
-	elsif rising_edge(clk_i) then
-
-		if(cfg_push = '1') then
-		
+    r_ack       <= '0';    
+    r_err       <= '0';
+    r_rst_n     <= '1';   
+    --r_debug_adr <= slave_i.adr(5-1+3 downto 2); 
+    v_adr       := to_integer(unsigned(slave_i.adr(c_ctrl_reg_spc_width-1+2 downto 2))); 
+    
+    if(push = '1') then
+      --CTRL REGISTERS
+      if(unsigned(slave_i.adr(slave_i.adr'left downto c_ctrl_reg_spc_width+2) /= 0) then
+        if(slave_i.we = '1') then
+          case v_adr is
+            when c_RESET          => r_rst_n <= '0';
+            when c_SRC_MAC_HI     => wr(v_adr);
+            when c_SRC_MAC_LO     => wr(v_adr,  x"FFFF0000");
+            when c_SRC_IPV4       => wr(v_adr);
+            when c_SRC_UDP_PORT   => wr(v_adr,  x"0000FFFF");
+            when c_DST_MAC_HI     => wr(v_adr);
+            when c_DST_MAC_LO     => wr(v_adr,  x"FFFF0000");
+            when c_DST_IPV4       => wr(v_adr);
+            when c_DST_UDP_PORT   => wr(v_adr,  x"0000FFFF");
+            when c_MTU            => wr(v_adr,  x"000000FF"); 
+            when c_OPA_HI         => wr(v_adr);
+            when c_OPA_MSK        => wr(v_adr); 
+            when c_RBA_HI         => wr(v_adr);
+            when c_RBA_MSK        => wr(v_adr); 
+            when c_EB_OPT         => wr(v_adr,  x"0000FFFF");
+            when others           => r_err <= '1';
+          end case;
+        
+        else  
+          case v_adr is
+            when c_STATUS         => rd(v_adr);
+            when c_SRC_MAC_HI     => rd(v_adr);
+            when c_SRC_MAC_LO     => rd(v_adr);
+            when c_SRC_IPV4       => rd(v_adr);
+            when c_SRC_UDP_PORT   => rd(v_adr);
+            when c_DST_MAC_HI     => rd(v_adr);
+            when c_DST_MAC_LO     => rd(v_adr);
+            when c_DST_IPV4       => rd(v_adr);
+            when c_DST_UDP_PORT   => rd(v_adr);
+            when c_MTU            => rd(v_adr); 
+            when c_OPA_HI         => rd(v_adr);
+            when c_OPA_MSK        => rd(v_adr);
+            when c_RBA_HI         => rd(v_adr);
+            when c_RBA_MSK        => rd(v_adr); 
+            when c_WOA_BASE       => rd(v_adr);
+            when c_ROA_BASE       => rd(v_adr);
+            when c_EB_OPT         => rd(v_adr);
+            when others           => r_err <= '1';
+          end case;    
+        end if;
+      --STAGING AREA   
+      elsif(unsigned(slave_i.adr and r_ctrl(c_OPA_MSK)) /= 0) then
+        if(slave_i.we = '1') then
+        
+        else
+          r_err <= '1';
+        end if;
+        
+      --BAD/UNMAPPED ADR
+      else
+        r_err <= '1';
+      end if;
+  end if;
 end if;
+end process;
 
--- memory mapped wb if stuff
---- direct wb if stuff
-	if(r_last_cyc = '0' and slave_i.cyc = '1') then
-		cfg_rec_hdr.sel 		<=  bridge_slave_i.sel;
-	end if; 
-
-
---end if;
-
-
-function cp_rec_hdr(src t_rec_hdr)
-		return t_rec_hdr is
-	variable ret : t_rec_hdr := c_rec_init;
-begin
-	ret.bca_cfg 	:= '1';	
-	ret.wr_fifo  	:= src.wr_fifo;			
-	ret.drop_cyc 	:= src.drop_cyc;			
-	ret.rca_cfg 	:= src.rca_cfg;
-	ret.rd_fifo 	:= src.rd_fifo;
-	ret.wca_cfg 	:= src.wca_cfg;
-	return ret;
-end;
-
-adr_cfg <= '1' when bridge_slave_i.adr(
-
-process p_eb_rec_hdr_gen(clk_i, rst_n_i)
-variable v_rec_hdr 						: t_rec_hdr;
-variable v_write_discontious 	: boolean;
-variable v_write_read_switch 	: boolean;
-variable v_cyc_falling				: boolean;
-variable v_mtu_reached				: boolean;
-variable v_wr_adr_chg					: boolean;
-
-begin
-	if rst_n_i = '0' then
-		r_rec_hdr 				<= c_rec_init;
-		r_hdr_push 				<= '0';
-
-	elsif rising_edge(clk_i) then
-		--we dont't parse anything if this an access to the config space 		
-		if(adr_cfg = '0') then 		
-			v_write_discontious := (slave_i.we = '1' and (unsigned(bridge_slave_i.adr) /= (r_last_adr + (c_data_width/8)))) ;
-			v_write_read_switch := (r_last_we = '0' and bridge_slave_i.we = '1');
-			v_mtu_reached				:= (rec_hdr.wr_cnt + rec_hdr.rd_cnt >= r_MTU);
-			v_cyc_falling				:= (r_last_cyc = '1' and bridge_slave_i.cyc = '0');
-			v_cyc_rising				:= (r_last_cyc = '1' and bridge_slave_i.cyc = '0');  
-			v_wr_adr_chg				:= r_wr_adr_chg = '1' or (bridge_slave_i.we = '1' and (unsigned(bridge_slave_i.adr) /= r_last_adr));
-			v_sel_chg						:= r_last_sel /= bridge_slave_i.sel;
-
-			r_hdr_push 					<= '0';
-	
-			if(v_cyc_rising or r_push_hdr = '1'	) then
-				--copy information from cycle cfg			
-				v_rec_hdr := cp_rec_hdr(cfg_rec_hdr);
-			else		
-				v_rec_hdr := cp_rec_hdr(r_rec_hdr);	
-			end if;
-		
-			v_rec_hdr.wr_fifo  := to_std_logic(not v_wr_adr_chg);	
-			
-			--create a new hdr if ...
-			if(	v_cyc_falling or v_write_read_switch or v_mtu_reached 
-			 or send_now_i = '1' or (v_write_discontious and v_wr_adr_chg)
-			 or v_sel_chg	) then 
-				r_push_hdr 				<= '1';			
-			end if;
-		
-			--if a new entry is inserted into adr_dat fifo, inc rd & wr counters accordingly
-			if(push = '1') then
-				wr_cnt <= wr_cnt + unsigned(slave_i.we);
-				rd_cnt <= rd_cnt + unsigned(not slave_i.we);
-			end if; 
-			
-			v_rec_hdr.wr_cnt := v_rec_hdr.wr_cnt + r_wr_cnt;	
-			v_rec_hdr.rd_cnt := v_rec_hdr.rd_cnt + r_rd_cnt;	
-			r_rec_hdr <= v_rec_hdr; 
-		end if;
-	end if;
-end 
-
-
-
-
+end architecture;
