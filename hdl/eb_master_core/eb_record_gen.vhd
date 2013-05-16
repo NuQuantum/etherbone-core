@@ -37,16 +37,18 @@ use work.etherbone_pkg.all;
 entity eb_record_gen is
   generic(g_mtu     : natural := 16);           -- Word count before a header creation is forced
   port(
-    clk_i           : in  std_logic;            -- WB Clock
+     clk_i           : in  std_logic;            -- WB Clock
     rst_n_i         : in  std_logic;            -- async reset
 
-    slave_i         : in  t_wishbone_slave_in;  -- WB Ops. -> not WB compliant, but the record format is practical
+    slave_i         : in  t_wishbone_slave_in;  -- WB op. -> not WB compliant, but the record format is practical
     slave_stall_o   : out std_logic;            -- flow control    
-
+    
+    
     rec_valid_o     : out std_logic;            -- latch signal for meta data
     rec_hdr_o       : out t_rec_hdr;            -- EB record header
 		rec_adr_rd_o    : out std_logic_vector(c_wishbone_address_width-1 downto 0); -- EB write base address
 		rec_adr_wr_o    : out std_logic_vector(c_wishbone_address_width-1 downto 0); -- EB read back address
+    rec_ack_i       : in std_logic;             -- full flag from op fifo
    
     cfg_rec_hdr_i   : t_rec_hdr -- EB cfg information, eg read from cfg space etc
 );   
@@ -117,7 +119,7 @@ signal r_push_hdr     : std_logic;
 
 -- FSMs
 type t_mode is (UNKNOWN, WR_FIFO, WR_NORM, RD_FIFO, RD_NORM, WR_SPLIT, RD_SPLIT);
-type t_hdr_state is (s_START, s_WRITE, s_READ, s_OUTP, s_WAIT);
+type t_hdr_state is (s_START, s_WRITE, s_READ, s_OUTP, s_WAIT, s_WACK);
 
 signal r_hdr_state    : t_hdr_state;
 signal r_mode         : t_mode;
@@ -154,10 +156,6 @@ r_stall_cmd <= '0';
 r_stall <= wb_fifo_full or r_drop;
 slave_stall_o <= r_stall;
 
-rec_valid_o   <= r_push_hdr;
-rec_hdr_o     <= r_rec_hdr;
-rec_adr_rd_o  <= r_adr_rd;
-rec_adr_wr_o  <= r_adr_wr;
  
 ------------------------------------------------------------------------------
 -- Input fifo
@@ -193,6 +191,13 @@ wb_fifo_d     <= dat & adr & we & sel;
     elsif rising_edge(clk_i) then
       --let the buffer empty before starting new cycle
       r_cyc <= cyc;
+      rec_valid_o   <= r_push_hdr;
+      if(r_push_hdr = '1') then
+        rec_hdr_o     <= r_rec_hdr;
+        rec_adr_rd_o  <= r_adr_rd;
+        rec_adr_wr_o  <= r_adr_wr;
+        
+      end if; 
       
       if(r_cyc = '1' and cyc = '0') then
         r_drop <= '1';    
@@ -376,7 +381,11 @@ wb_fifo_d     <= dat & adr & we & sel;
                           r_cnt_wait <= r_cnt_wait-1;
                         end if;
                                               
-        when s_OUTP    =>  v_state := s_START;  
+      when s_OUTP    =>  v_state := s_WACK;
+        
+        when s_WACK    =>  if(rec_ack_i = '1') then
+                             v_state := s_START;
+                           end if; 
         when others    =>  v_state := s_START;
       end case;
     
