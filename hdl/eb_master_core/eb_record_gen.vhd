@@ -35,22 +35,21 @@ use work.eb_hdr_pkg.all;
 use work.etherbone_pkg.all;
 
 entity eb_record_gen is
-  generic(g_mtu     : natural := 16);           -- Word count before a header creation is forced
   port(
-     clk_i           : in  std_logic;            -- WB Clock
+    clk_i           : in  std_logic;            -- WB Clock
     rst_n_i         : in  std_logic;            -- async reset
 
     slave_i         : in  t_wishbone_slave_in;  -- WB op. -> not WB compliant, but the record format is practical
     slave_stall_o   : out std_logic;            -- flow control    
     
-    
     rec_valid_o     : out std_logic;            -- latch signal for meta data
     rec_hdr_o       : out t_rec_hdr;            -- EB record header
-		rec_adr_rd_o    : out std_logic_vector(c_wishbone_address_width-1 downto 0); -- EB write base address
-		rec_adr_wr_o    : out std_logic_vector(c_wishbone_address_width-1 downto 0); -- EB read back address
+		rec_adr_rd_o    : out t_wishbone_data;      -- EB write base address
+		rec_adr_wr_o    : out t_wishbone_address;   -- EB read back address
     rec_ack_i       : in std_logic;             -- full flag from op fifo
    
-    cfg_rec_hdr_i   : t_rec_hdr -- EB cfg information, eg read from cfg space etc
+    cfg_rec_hdr_i   : t_rec_hdr; -- EB cfg information, eg read from cfg space etc
+    mtu_i           : in unsigned(15 downto 0)
 );   
 end eb_record_gen;
 
@@ -145,41 +144,41 @@ begin
 ------------------------------------------------------------------------------
 -- IO assignments
 ------------------------------------------------------------------------------
-cyc <= slave_i.cyc;
-stb <= slave_i.stb;
-we <=  slave_i.we;
-adr <= slave_i.adr;
-dat <= slave_i.dat;
-sel <= slave_i.sel;
+  cyc <= slave_i.cyc;
+  stb <= slave_i.stb;
+  we <=  slave_i.we;
+  adr <= slave_i.adr;
+  dat <= slave_i.dat;
+  sel <= slave_i.sel;
 
-r_stall_cmd <= '0';
-r_stall <= wb_fifo_full or r_drop;
-slave_stall_o <= r_stall;
+  r_stall_cmd <= '0';
+  r_stall <= wb_fifo_full or r_drop;
+  slave_stall_o <= r_stall;
 
- 
+   
 ------------------------------------------------------------------------------
 -- Input fifo
 ------------------------------------------------------------------------------
-wb_fifo : eb_fifo
-  generic map(
-    g_width => 32+32+1+4,
-    g_size  => 4)
-  port map (
-    clk_i     => clk_i,
-    rstn_i    => rst_n_i,
-    w_full_o  => wb_fifo_full,
-    w_push_i  => wb_fifo_push,
-    w_dat_i   => wb_fifo_d,
-    r_empty_o => wb_fifo_empty,
-    r_pop_i   => wb_fifo_pop,
-    r_dat_o   => wb_fifo_q);
+  wb_fifo : eb_fifo
+    generic map(
+      g_width => 32+32+1+4,
+      g_size  => 4)
+    port map (
+      clk_i     => clk_i,
+      rstn_i    => rst_n_i,
+      w_full_o  => wb_fifo_full,
+      w_push_i  => wb_fifo_push,
+      w_dat_i   => wb_fifo_d,
+      r_empty_o => wb_fifo_empty,
+      r_pop_i   => wb_fifo_pop,
+      r_dat_o   => wb_fifo_q);
 
-wb_fifo_pop   <= r_wb_pop and not wb_fifo_empty;
-wb_fifo_push  <= cyc and stb and not r_stall;
-wb_fifo_d     <= dat & adr & we & sel;
+  wb_fifo_pop   <= r_wb_pop and not wb_fifo_empty;
+  wb_fifo_push  <= cyc and stb and not r_stall;
+  wb_fifo_d     <= dat & adr & we & sel;
 
 ------------------------------------------------------------------------------
---Parser Aux Structures
+-- Parser Aux Structures
 ------------------------------------------------------------------------------
 --register IOs, End of Packet, Addres diff
   p_register_io : process (clk_i, rst_n_i) is
@@ -192,11 +191,11 @@ wb_fifo_d     <= dat & adr & we & sel;
       --let the buffer empty before starting new cycle
       r_cyc <= cyc;
       rec_valid_o   <= r_push_hdr;
-      if(r_push_hdr = '1') then
+      
+      if(r_push_hdr = '1') then -- the 'if' is not necessary but makes debugging easier
         rec_hdr_o     <= r_rec_hdr;
         rec_adr_rd_o  <= r_adr_rd;
         rec_adr_wr_o  <= r_adr_wr;
-        
       end if; 
       
       if(r_cyc = '1' and cyc = '0') then
@@ -232,7 +231,7 @@ wb_fifo_d     <= dat & adr & we & sel;
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
--- Parser 
+-- Parser FSM
 ------------------------------------------------------------------------------
   p_eb_rec_hdr_gen : process (clk_i, rst_n_i) is
   variable v_rec_hdr      : t_rec_hdr;
@@ -259,13 +258,13 @@ wb_fifo_d     <= dat & adr & we & sel;
       r_mode      <= UNKNOWN;
       r_wb_pop    <= '0';
     elsif rising_edge(clk_i) then
-      v_mtu_reached := (r_rec_hdr.wr_cnt + r_rec_hdr.rd_cnt >= g_mtu);      
+      v_mtu_reached := (r_rec_hdr.wr_cnt + r_rec_hdr.rd_cnt >= mtu_i);      
       v_state       := r_hdr_state;                    
       r_push_hdr    <= '0';
       r_wb_pop      <= '0';
       
     case r_hdr_state is
-      when s_START  =>  --latch all cfg data
+      when s_START  =>  --register all cfg data
                         r_rec_hdr.res1      <= '0';
                         r_rec_hdr.res2      <= '0';
                         r_rec_hdr.bca_cfg   <= '1';
@@ -291,7 +290,10 @@ wb_fifo_d     <= dat & adr & we & sel;
                           end if;
                         end if;
      
-      when s_WRITE  =>  --if the fifo just ran low, wait. If drop signal shows it was intentional, finalise header. Could also insert a timeout here 
+      when s_WRITE  =>  -- process write requests
+      
+                        --if the fifo just ran low, wait. If drop signal shows it was intentional, 
+                        --finalise header. Could also insert a timeout here 
                         if(wb_fifo_empty = '1' and r_drop = '0') then
                             v_state := s_WRITE; 
                         elsif((wb_fifo_empty = '1' and r_drop = '1') or v_mtu_reached or a_sel /= r_rec_hdr.sel(3 downto 0)) then
@@ -319,7 +321,7 @@ wb_fifo_d     <= dat & adr & we & sel;
                                 v_state := s_OUTP;
                               end if;           
                             else
-                              -- change in address mode
+                              -- see if change in address requires new header
                               if((r_mode = WR_FIFO and not eq(a_adr, r_adr))
                               or (r_mode = WR_NORM and not is_inc(a_adr, r_adr))) then
                                   r_mode <= WR_SPLIT;
@@ -333,7 +335,10 @@ wb_fifo_d     <= dat & adr & we & sel;
                           end if;
                         end if;
                           
-      when s_READ  =>   --if the fifo just ran low, wait. If drop signal shows it was intentional, finalise header. Could also insert a timeout here
+      when s_READ   =>  -- process read requests
+      
+                        --if the fifo just ran low, wait. If drop signal shows it was intentional, 
+                        --finalise header. Could also insert a timeout here
                         if(wb_fifo_empty = '1' and r_drop = '0') then
                           v_state := s_READ; 
                         elsif((wb_fifo_empty = '1' and r_drop = '1')  or v_mtu_reached or a_sel /= r_rec_hdr.sel(3 downto 0)) then
@@ -343,7 +348,7 @@ wb_fifo_d     <= dat & adr & we & sel;
                           if(a_we = "1") then
                             v_state := s_OUTP;
                           else                              
-                            --set rd address mode                              
+                            --set rba mode                              
                             if(r_mode = UNKNOWN) then
                               if(eq(a_dat, r_dat)) then       -- constant return address -> rd fifo
                                 r_mode <= RD_FIFO;
@@ -360,7 +365,7 @@ wb_fifo_d     <= dat & adr & we & sel;
                                 v_state :=  s_OUTP;
                               end if;           
                             else
-                               -- change in address mode
+                              -- see if change in data (return  requires new header
                               if((r_mode = RD_FIFO and not eq(a_dat, r_dat))
                               or (r_mode = RD_NORM and not is_inc(a_dat, r_dat))) then
                                   r_mode <= RD_SPLIT;
@@ -381,18 +386,24 @@ wb_fifo_d     <= dat & adr & we & sel;
                           r_cnt_wait <= r_cnt_wait-1;
                         end if;
                                               
-      when s_OUTP    =>  v_state := s_WACK;
+      when s_OUTP   =>  -- signal the framer we got a valid header and adr for him 
+                        v_state := s_WACK;
         
-        when s_WACK    =>  if(rec_ack_i = '1') then
-                             v_state := s_START;
-                           end if; 
-        when others    =>  v_state := s_START;
-      end case;
+      when s_WACK   =>  -- since eb content is bigger than incoming wb ops stream, 
+                        -- we must wait until the framer acks the header and adr we gave him
+                         if(rec_ack_i = '1') then 
+                          v_state := s_START;
+                         end if;
+                          
+      when others   =>  v_state := s_START;
+    
+    end case;
     
       -- flags on state transition
       if(v_state = s_START) then
         r_latch <= '1';
       end if;
+      
       if(v_state = s_OUTP) then
         r_push_hdr <= '1';
       end if;

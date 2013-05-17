@@ -1,5 +1,5 @@
 --! @file eb_master_top.vhd
---! @brief Parses WB Operations and generates meta data for EB records 
+--! @brief Top file for the EtherBone Master
 --!
 --! Copyright (C) 2013-2014 GSI Helmholtz Centre for Heavy Ion Research GmbH 
 --!
@@ -43,57 +43,78 @@ port(
   slave_i     : in  t_wishbone_slave_in;
   slave_o     : out t_wishbone_slave_out;
   
-  my_mac_o    : out std_logic_vector(47 downto 0);
-  my_ip_o     : out std_logic_vector(31 downto 0);
-  my_port_o   : out std_logic_vector(15 downto 0);
-  
-  his_mac_o   : out std_logic_vector(47 downto 0); 
-  his_ip_o    : out std_logic_vector(31 downto 0);
-  his_port_o  : out std_logic_vector(15 downto 0); 
-  length_o    : out std_logic_vector(15 downto 0);
-  
-  adr_hi_o    : std_logic_vector(c_wishbone_data_width-1 downto 0);
-  eb_opt_o    : std_logic_vector(c_wishbone_data_width-1 downto 0)
+  src_i        : in  t_wrf_source_in;
+  src_o        : out t_wrf_source_out
 );
 end eb_master_top;
 
 architecture rtl of eb_master_top is
 
-constant c_ctrl_reg_spc_width : natural := 5; --fix me: need log2 function
 
-subtype t_r_adr is natural range 0 to 2**c_ctrl_reg_spc_width-1;
---Register map
-constant c_RESET        : t_r_adr := 0;                 --wo
-constant c_STATUS       : t_r_adr := c_RESET        +1; --rw
-constant c_SRC_MAC_HI   : t_r_adr := c_STATUS       +1; --rw
-constant c_SRC_MAC_LO   : t_r_adr := c_SRC_MAC_HI   +1; --rw
-constant c_SRC_IPV4     : t_r_adr := c_SRC_MAC_LO   +1; --rw
-constant c_SRC_UDP_PORT : t_r_adr := c_SRC_IPV4     +1; --rw
-constant c_DST_MAC_HI   : t_r_adr := c_SRC_UDP_PORT +1; --rw
-constant c_DST_MAC_LO   : t_r_adr := c_DST_MAC_HI   +1; --rw
-constant c_DST_IPV4     : t_r_adr := c_DST_MAC_LO   +1; --rw
-constant c_DST_UDP_PORT : t_r_adr := c_DST_IPV4     +1; --rw
-constant c_MTU          : t_r_adr := c_DST_UDP_PORT +1; --rw
-constant c_OPA_HI       : t_r_adr := c_MTU          +1; --rw
-constant c_OPA_MSK      : t_r_adr := c_OPA_HI       +1; --rw
-constant c_RBA_HI       : t_r_adr := c_OPA_MSK      +1; --rw
-constant c_RBA_MSK      : t_r_adr := c_RBA_HI       +1; --rw
-constant c_WOA_BASE     : t_r_adr := c_RBA_MSK      +1; --ro
-constant c_ROA_BASE     : t_r_adr := c_WOA_BASE     +1; --ro
-constant c_EB_OPT       : t_r_adr := c_ROA_BASE     +1; --rw
-constant c_LAST         : t_r_adr := c_EB_OPT; 
-
-subtype t_reg is std_logic_vector(c_wishbone_data_width-1 downto 0);
-type t_ctrl is array(0 to c_LAST) of t_reg;
-
-signal r_ctrl   : t_ctrl;
-signal r_ack    : std_logic;
 signal r_err    : std_logic;
 signal r_stall  : std_logic;
 signal r_rst_n  : std_logic;
 signal push     : std_logic;
 
+  signal s_his_mac,  s_my_mac  : std_logic_vector(47 downto 0);
+  signal s_his_ip,   s_my_ip   : std_logic_vector(31 downto 0);
+  signal s_his_port, s_my_port : std_logic_vector(15 downto 0);
+  
+  signal s_tx_stb     : std_logic;
+  signal s_tx_stall   : std_logic;
+  signal s_skip_stb   : std_logic;
+  signal s_skip_stall : std_logic;
+  signal s_length     : unsigned(15 downto 0); -- of UDP in words
+  
+  signal s_rx2widen   : t_wishbone_master_out;
+  signal s_widen2rx   : t_wishbone_master_in;
+  signal s_widen2fsm  : t_wishbone_master_out;
+  signal s_fsm2widen  : t_wishbone_master_in;
+  signal s_fsm2narrow : t_wishbone_master_out;
+  signal s_narrow2fsm : t_wishbone_master_in;
+  signal s_narrow2tx  : t_wishbone_master_out;
+  signal s_tx2narrow  : t_wishbone_master_in;
+  
 
+-- instances:
+-- eb_master_wb_if
+-- eb_framer
+-- eb_eth_tx
+-- eb_stream_narrow
+
+narrow : eb_stream_narrow
+    generic map(
+      g_slave_width  => 32,
+      g_master_width => 16)
+    port map(
+      clk_i    => clk_i,
+      rst_n_i  => nRst_i,
+      slave_i  => s_fsm2narrow,
+      slave_o  => s_narrow2fsm,
+      master_i => s_tx2narrow,
+      master_o => s_narrow2tx);
+
+  tx : eb_eth_tx
+    generic map(
+      g_mtu => g_mtu)
+    port map(
+      clk_i        => clk_i,
+      rst_n_i      => nRst_i,
+      src_i        => src_i,
+      src_o        => src_o,
+      slave_o      => s_tx2narrow,
+      slave_i      => s_narrow2tx,
+      stb_i        => s_tx_stb,
+      stall_o      => s_tx_stall,
+      mac_i        => s_his_mac,
+      ip_i         => s_his_ip,
+      port_i       => s_his_port,
+      length_i     => s_length,
+      skip_stb_i   => s_skip_stb,
+      skip_stall_o => s_skip_stall,
+      my_mac_i     => s_my_mac,
+      my_ip_i      => s_my_ip,
+      my_port_i    => s_my_port);
 
 begin
 
@@ -117,92 +138,14 @@ adr_hi_o    <= r_ctrl(c_OPA_HI);
 eb_opt_o    <= r_ctrl(c_EB_OPT);
 
 
-p_wb_if : process (clk_i, rst_n_i) is
+p_main : process (clk_i, rst_n_i) is
 variable v_adr : t_r_adr;
 
-procedure wr( adr   : in natural := 1;
-              msk   : in std_logic_vector(c_wishbone_data_width-1 downto 0) := x"FFFFFFFF"
-                    ) is
-begin
-  r_ctrl(adr) <= slave_i.dat and msk;
-  r_ack       <= '1'; 
-end procedure wr;
-
-procedure rd( adr   : in natural := 1;
-              msk   : in std_logic_vector(c_wishbone_data_width-1 downto 0) := x"FFFFFFFF"
-                    ) is
-begin
-  slave_o.dat <=    r_ctrl(adr) and msk;
-  r_ack       <= '1'; 
-end procedure rd;
 
 begin
 	if rst_n_i = '0' then
-	 slave_o.dat   <= (others => '0');
 	elsif rising_edge(clk_i) then
-    r_ack       <= '0';    
-    r_err       <= '0';
-    r_rst_n     <= '1';   
-    --r_debug_adr <= slave_i.adr(5-1+3 downto 2); 
-    v_adr       := to_integer(unsigned(slave_i.adr(c_ctrl_reg_spc_width-1+2 downto 2))); 
     
-    if(push = '1') then
-      --CTRL REGISTERS
-      if(unsigned(slave_i.adr(slave_i.adr'left downto c_ctrl_reg_spc_width+2) /= 0) then
-        if(slave_i.we = '1') then
-          case v_adr is
-            when c_RESET          => r_rst_n <= '0';
-            when c_SRC_MAC_HI     => wr(v_adr);
-            when c_SRC_MAC_LO     => wr(v_adr,  x"FFFF0000");
-            when c_SRC_IPV4       => wr(v_adr);
-            when c_SRC_UDP_PORT   => wr(v_adr,  x"0000FFFF");
-            when c_DST_MAC_HI     => wr(v_adr);
-            when c_DST_MAC_LO     => wr(v_adr,  x"FFFF0000");
-            when c_DST_IPV4       => wr(v_adr);
-            when c_DST_UDP_PORT   => wr(v_adr,  x"0000FFFF");
-            when c_MTU            => wr(v_adr,  x"000000FF"); 
-            when c_OPA_HI         => wr(v_adr);
-            when c_OPA_MSK        => wr(v_adr); 
-            when c_RBA_HI         => wr(v_adr);
-            when c_RBA_MSK        => wr(v_adr); 
-            when c_EB_OPT         => wr(v_adr,  x"0000FFFF");
-            when others           => r_err <= '1';
-          end case;
-        
-        else  
-          case v_adr is
-            when c_STATUS         => rd(v_adr);
-            when c_SRC_MAC_HI     => rd(v_adr);
-            when c_SRC_MAC_LO     => rd(v_adr);
-            when c_SRC_IPV4       => rd(v_adr);
-            when c_SRC_UDP_PORT   => rd(v_adr);
-            when c_DST_MAC_HI     => rd(v_adr);
-            when c_DST_MAC_LO     => rd(v_adr);
-            when c_DST_IPV4       => rd(v_adr);
-            when c_DST_UDP_PORT   => rd(v_adr);
-            when c_MTU            => rd(v_adr); 
-            when c_OPA_HI         => rd(v_adr);
-            when c_OPA_MSK        => rd(v_adr);
-            when c_RBA_HI         => rd(v_adr);
-            when c_RBA_MSK        => rd(v_adr); 
-            when c_WOA_BASE       => rd(v_adr);
-            when c_ROA_BASE       => rd(v_adr);
-            when c_EB_OPT         => rd(v_adr);
-            when others           => r_err <= '1';
-          end case;    
-        end if;
-      --STAGING AREA   
-      elsif(unsigned(slave_i.adr and r_ctrl(c_OPA_MSK)) /= 0) then
-        if(slave_i.we = '1') then
-        
-        else
-          r_err <= '1';
-        end if;
-        
-      --BAD/UNMAPPED ADR
-      else
-        r_err <= '1';
-      end if;
   end if;
 end if;
 end process;

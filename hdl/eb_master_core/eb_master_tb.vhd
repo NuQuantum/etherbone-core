@@ -5,6 +5,7 @@ use ieee.numeric_std.all;
 library work;
 use work.wishbone_pkg.all;
 use work.eb_hdr_pkg.all;
+use work.eb_internals_pkg.all;
 
 -- entity declaration for your testbench.Dont declare any ports here
 ENTITY test_tb IS
@@ -12,28 +13,7 @@ END test_tb;
 
 ARCHITECTURE behavior OF test_tb IS
 
- 
-  
-  
-  
 
-component eb_framer is
-  generic(g_mtu         : natural := 16);
-  port(
-    clk_i           : in  std_logic;            -- WB Clock
-    rst_n_i         : in  std_logic;            -- async reset
-
-    slave_i         : in  t_wishbone_slave_in;  -- WB op. -> not WB compliant, but the record format is practical
-    slave_stall_o   : out std_logic;            -- flow control    
-    
-    tx_data_o       : out std_logic_vector(c_wishbone_data_width-1 downto 0);
-    tx_en_o         : out std_logic;
-    tx_rdy_i        : in std_logic;
-    tx_send_now_i   : in std_logic;
-    
-    cfg_rec_hdr_i   : t_rec_hdr -- EB cfg information, eg read from cfg space etc
-);   
-   end component;
 
 
    constant c_dummy_slave_in : t_wishbone_slave_in :=
@@ -58,7 +38,6 @@ component eb_framer is
 BEGIN
     -- Instantiate the Unit Under Test (UUT)
    uut: eb_framer 
-   GENERIC MAP(g_mtu => 32)
    PORT MAP (
          
 		  clk_i           => clk,
@@ -72,7 +51,9 @@ BEGIN
 		  tx_rdy_i        => '1',
       tx_send_now_i   => eop,
     
-			cfg_rec_hdr_i		=> cfg_rec_hdr);      
+			cfg_rec_hdr_i		=> cfg_rec_hdr
+			mtu_i           => 32
+			);      
 
    -- Clock process definitions( clock with 50% duty cycle is generated here.
    clk_process :process
