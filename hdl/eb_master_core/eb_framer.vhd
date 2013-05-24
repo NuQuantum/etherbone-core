@@ -33,13 +33,14 @@ library work;
 use work.wishbone_pkg.all;
 use work.eb_hdr_pkg.all;
 use work.etherbone_pkg.all;
+use work.eb_internals_pkg.all;
 
 entity eb_framer is
   port(
     clk_i           : in  std_logic;            -- WB Clock
     rst_n_i         : in  std_logic;            -- async reset
 
-    slave_i         : in  t_wishbone_slave_in;  -- WB op. -> not WB compliant, but the record format is practical
+    slave_i         : in  t_wishbone_slave_in;  -- WB op. -> not WB compliant, but the record format is convenient
     slave_stall_o   : out std_logic;            -- flow control    
     
     EB_tx_o         : out t_wishbone_master_out;
@@ -96,7 +97,7 @@ begin
   EB_tx_o.adr <= (others => '0');
 
   rgen: eb_record_gen 
-    GENERIC MAP(g_mtu => g_mtu)
+
     PORT MAP (
          
       clk_i           => clk_i,
@@ -111,7 +112,8 @@ begin
       rec_adr_rd_o    => adr_rd, 
       rec_adr_wr_o    => adr_wr,
       
-      cfg_rec_hdr_i   => cfg_rec_hdr_i); 
+      cfg_rec_hdr_i   => cfg_rec_hdr_i,
+      mtu_i           => mtu_i); 
  
 ------------------------------------------------------------------------------
 -- fifos
@@ -119,7 +121,7 @@ begin
   op_fifo : eb_fifo
     generic map(
       g_width => 33,
-      g_size  => g_mtu)
+      g_size  => 256)
     port map (
       clk_i     => clk_i,
       rstn_i    => rst_n_i,
@@ -173,6 +175,8 @@ begin
       
       case r_mux_state is
         when s_IDLE   =>  if(rec_valid = '1') then
+                           
+                           
                            if(r_first_rec = '1') then
                               r_first_rec <= '0';
                               EB_tx_o.cyc <= '1';
@@ -207,7 +211,6 @@ begin
         when s_WRITE  =>  if(EB_tx_i.stall = '0') then
                             if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output write values
                               if(rec_hdr.rd_cnt /= 0) then
-                                op_pop    <= '1';
                                 v_state := s_RA;
                               else
                                 v_state := s_DONE;

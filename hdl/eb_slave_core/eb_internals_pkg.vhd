@@ -7,6 +7,7 @@ use IEEE.numeric_std.all;
 library work;
 use work.wishbone_pkg.all;
 use work.wr_fabric_pkg.all;
+use work.eb_hdr_pkg.all;
 
 package eb_internals_pkg is 
 

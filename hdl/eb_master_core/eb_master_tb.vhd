@@ -18,12 +18,15 @@ ARCHITECTURE behavior OF test_tb IS
 
    constant c_dummy_slave_in : t_wishbone_slave_in :=
     ('0', '0', x"00000000", x"F", '0', x"00000000");
+   constant c_dummy_slave_out : t_wishbone_slave_out :=
+    ('0', '0', '0', '0', '0', x"00000000"); 
    constant c_dummy_master_out : t_wishbone_master_out := c_dummy_slave_in;
 
    --declare inputs and initialize them
   signal clk 						: std_logic := '0';
 	signal rst_n 					: std_logic := '0';
-	signal master_o				: t_wishbone_master_out;
+	signal master_o,eb_tx_o				: t_wishbone_master_out;
+	signal eb_tx_i        : t_wishbone_master_in;
 	signal slave_stall 		: std_logic;
 	signal cfg_rec_hdr  	: t_rec_hdr;
 	signal cfg_mtu			  :  natural;
@@ -46,13 +49,12 @@ BEGIN
 		  slave_i  			  => master_o,
 			slave_stall_o	  => slave_stall,
 
-      tx_data_o       => data,
-      tx_en_o         => en,
-		  tx_rdy_i        => '1',
-      tx_send_now_i   => eop,
+      EB_tx_o         => eb_tx_o,
+      EB_tx_i         => eb_tx_i,
+      tx_send_now_i   => eop, 
     
-			cfg_rec_hdr_i		=> cfg_rec_hdr
-			mtu_i           => 32
+			cfg_rec_hdr_i		=> cfg_rec_hdr,
+			mtu_i           => to_unsigned(32, 16)
 			);      
 
    -- Clock process definitions( clock with 50% duty cycle is generated here.
@@ -106,7 +108,7 @@ BEGIN
   
    begin        
         rst_n <= '0';
-         
+        eb_tx_i <= c_dummy_slave_out;
         master_o			<= c_dummy_master_out;
 	      master_o.sel <= x"f";
 	      
@@ -127,14 +129,14 @@ BEGIN
         wb_send_test('0', 1, x"F0000000", 4, '0', '1');  -- 1 rd
         
          wb_send_test('1', 1, x"A0000000", 4, '1', '0');  -- 1 wr 
-        wb_send_test('0', 1, x"F0000000", 4, '0', '1');  -- 1 rd
+        wb_send_test('0', 2, x"F0000000", 4, '0', '0');  -- 1 rd
         
-        wb_send_test('1', 10, x"F0000000", 0, '0', '0');  -- 10 rd
-        wb_send_test('0', 10, x"F0000000", 4, '0', '1');  -- 10 rd
+       wb_send_test('1', 10, x"F0000000", 0, '0', '0');  -- 10 rd
+        wb_send_test('0', 10, x"F0000000", 4, '0', '0');  -- 10 rd
         wb_send_test('1', 1, x"F0000010", 0, '0', '0');  -- 1 rd
         wb_send_test('1', 1, x"F0000020", 0, '0', '0');  -- 1 rd
         wb_send_test('1', 1, x"F0000030", 0, '0', '0');  -- 1 rd
-        wb_send_test('0', 1, x"F0000040", 0, '0', '1');  -- 1 rd
+        wb_send_test('0', 1, x"F0000040", 0, '0', '0');  -- 1 rd
          
         wait;
   end process;
