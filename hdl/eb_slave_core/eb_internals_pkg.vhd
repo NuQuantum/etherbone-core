@@ -296,57 +296,65 @@ package eb_internals_pkg is
 ----------------------------------------------------------------- 
  
   component eb_master_top is
+  generic(g_mtu : natural := 32);
     port(
       clk_i       : in  std_logic;
       rst_n_i     : in  std_logic;
 
       slave_i     : in  t_wishbone_slave_in;
       slave_o     : out t_wishbone_slave_out;
-      
+      tx_send_now_i : in  std_logic;
       src_i       : in  t_wrf_source_in;
       src_o       : out t_wrf_source_out);
   end component ;
  
-  component eb_master_wb_if is
+    component eb_master_wb_if is
     port(
-      clk_i       : in  std_logic;
-      rst_n_i     : in  std_logic;
+  clk_i       : in  std_logic;
+  rst_n_i     : in  std_logic;
 
-      slave_i     : in  t_wishbone_slave_in;
-      slave_dat_o : out  std_logic;
-      slave_ack_o : out  std_logic;
-      slave_err_o : out  std_logic;
-      
-      my_mac_o    : out std_logic_vector(47 downto 0);
-      my_ip_o     : out std_logic_vector(31 downto 0);
-      my_port_o   : out std_logic_vector(15 downto 0);
-      
-      his_mac_o   : out std_logic_vector(47 downto 0); 
-      his_ip_o    : out std_logic_vector(31 downto 0);
-      his_port_o  : out std_logic_vector(15 downto 0); 
-      length_o    : out std_logic_vector(15 downto 0);
-      
-      adr_hi_o    : t_wishbone_address;
-      eb_opt_o    : t_wishbone_data);
+  wb_rst_n_o  : out std_logic;
+  flush_o     : out std_logic;
+
+  slave_i     : in  t_wishbone_slave_in;
+  slave_dat_o : out t_wishbone_data;
+  slave_ack_o : out  std_logic;
+  slave_err_o : out  std_logic;
+  
+  my_mac_o    : out std_logic_vector(47 downto 0);
+  my_ip_o     : out std_logic_vector(31 downto 0);
+  my_port_o   : out std_logic_vector(15 downto 0);
+  
+  his_mac_o   : out std_logic_vector(47 downto 0); 
+  his_ip_o    : out std_logic_vector(31 downto 0);
+  his_port_o  : out std_logic_vector(15 downto 0); 
+  length_o    : out unsigned(15 downto 0);
+  
+  adr_hi_o    : out t_wishbone_address;
+  eb_opt_o    : out t_rec_hdr);
   end component;
   
+  
   component eb_framer is
+  generic(g_mtu : natural := 32);
     port(
       clk_i           : in  std_logic;            
       rst_n_i         : in  std_logic;           
 
       slave_i         : in  t_wishbone_slave_in;  
       slave_stall_o   : out std_logic;       
+      tx_send_now_i   : in  std_logic;
       
-      EB_tx_o         : out t_wishbone_master_out;
-      EB_tx_i         : in  t_wishbone_master_in;
-      tx_send_now_i   : in std_logic;
-      
-      cfg_rec_hdr_i   : t_rec_hdr; 
-      mtu_i           : in unsigned(15 downto 0));   
+      tx_data_o       : out t_wishbone_data;
+      tx_stb_o        : out std_logic;
+      tx_stall_i      : in  std_logic;
+      tx_flush_o      : out std_logic;
+      adr_hi_i        : in t_wishbone_address;
+      cfg_rec_hdr_i   : in t_rec_hdr);   
   end component;
   
   component eb_record_gen is
+    generic(g_mtu : natural := 32);
     port(
       clk_i           : in  std_logic;            
       rst_n_i         : in  std_logic;            
@@ -360,8 +368,7 @@ package eb_internals_pkg is
 		  rec_adr_wr_o    : out t_wishbone_address; 
       rec_ack_i       : in std_logic;             
      
-      cfg_rec_hdr_i   : t_rec_hdr; 
-      mtu_i           : in unsigned(15 downto 0));   
+      cfg_rec_hdr_i   : in t_rec_hdr);   
   end component ;
   
 end package;

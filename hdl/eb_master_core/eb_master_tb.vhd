@@ -6,6 +6,7 @@ library work;
 use work.wishbone_pkg.all;
 use work.eb_hdr_pkg.all;
 use work.eb_internals_pkg.all;
+use work.wr_fabric_pkg.all;
 
 -- entity declaration for your testbench.Dont declare any ports here
 ENTITY test_tb IS
@@ -25,8 +26,12 @@ ARCHITECTURE behavior OF test_tb IS
    --declare inputs and initialize them
   signal clk 						: std_logic := '0';
 	signal rst_n 					: std_logic := '0';
-	signal master_o,eb_tx_o				: t_wishbone_master_out;
-	signal eb_tx_i        : t_wishbone_master_in;
+	signal master_o				: t_wishbone_master_out;
+	signal master_i				: t_wishbone_master_in;
+	
+	signal src_i          : t_wrf_source_in;
+  signal src_o          : t_wrf_source_out;
+	
 	signal slave_stall 		: std_logic;
 	signal cfg_rec_hdr  	: t_rec_hdr;
 	signal cfg_mtu			  :  natural;
@@ -40,22 +45,40 @@ ARCHITECTURE behavior OF test_tb IS
    constant clk_period : time := 8 ns;
 BEGIN
     -- Instantiate the Unit Under Test (UUT)
-   uut: eb_framer 
+--   uut: eb_framer 
+--   PORT MAP (
+         
+--		  clk_i           => clk,
+--		  rst_n_i         => rst_n,
+
+--		  slave_i  			  => master_o,
+--			slave_stall_o	  => slave_stall,
+
+--      EB_tx_o         => eb_tx_o,
+--      EB_tx_i         => eb_tx_i,
+--      tx_send_now_i   => eop, 
+    
+--			cfg_rec_hdr_i		=> cfg_rec_hdr,
+--			mtu_i           => to_unsigned(32, 16)
+--			);      
+
+uut: eb_master_top 
+   GENERIC MAP(g_mtu => 32)
    PORT MAP (
          
 		  clk_i           => clk,
 		  rst_n_i         => rst_n,
 
 		  slave_i  			  => master_o,
-			slave_stall_o	  => slave_stall,
-
-      EB_tx_o         => eb_tx_o,
-      EB_tx_i         => eb_tx_i,
+			slave_o         =>  master_i,
       tx_send_now_i   => eop, 
-    
-			cfg_rec_hdr_i		=> cfg_rec_hdr,
-			mtu_i           => to_unsigned(32, 16)
-			);      
+
+      src_o           => src_o,
+      src_i           => src_i
+			);    
+
+slave_stall <= master_i.stall;
+
 
    -- Clock process definitions( clock with 50% duty cycle is generated here.
    clk_process :process
@@ -90,12 +113,13 @@ BEGIN
       master_o.we   <= we; 
       master_o.adr  <= std_logic_vector(offs + to_unsigned(I*adr_inc, 32));
       master_o.dat  <= x"DEAD" & std_logic_vector(to_unsigned(I*adr_inc, 16));
-      wait for clk_period; 
       if(I = ops -1) then
         eop <= send;
       else
         eop <= '0';
       end if;
+      wait for clk_period; 
+      
       while slave_stall = '1'loop
         wait for clk_period; 
       end loop;
@@ -108,7 +132,7 @@ BEGIN
   
    begin        
         rst_n <= '0';
-        eb_tx_i <= c_dummy_slave_out;
+        src_i <= c_dummy_src_in;
         master_o			<= c_dummy_master_out;
 	      master_o.sel <= x"f";
 	      
@@ -120,23 +144,23 @@ BEGIN
 
         wb_send_test('1', 3, x"A0000000", 4, '1', '0');  -- 3 wr                    
         
-        wb_send_test('0', 1, x"A0000000", 4, '1', '1');  -- 1 wr 
+        wb_send_test('0', 1, x"A0000000", 4, '0', '1');  -- 1 wr 
         
         wb_send_test('1', 5, x"A0000000", 4, '1', '0');  -- 1 wr 
         wb_send_test('0', 1, x"F0000000", 4, '0', '0');  -- 1 rd
         
-         wb_send_test('1', 1, x"A0000000", 4, '1', '0');  -- 1 wr 
+        wb_send_test('1', 1, x"A0000000", 4, '1', '0');  -- 1 wr 
         wb_send_test('0', 1, x"F0000000", 4, '0', '1');  -- 1 rd
         
-         wb_send_test('1', 1, x"A0000000", 4, '1', '0');  -- 1 wr 
+        wb_send_test('1', 1, x"A0000000", 4, '1', '0');  -- 1 wr 
         wb_send_test('0', 2, x"F0000000", 4, '0', '0');  -- 1 rd
         
-       wb_send_test('1', 10, x"F0000000", 0, '0', '0');  -- 10 rd
+        wb_send_test('1', 10, x"F0000000", 0, '0', '0');  -- 10 rd
         wb_send_test('0', 10, x"F0000000", 4, '0', '0');  -- 10 rd
         wb_send_test('1', 1, x"F0000010", 0, '0', '0');  -- 1 rd
         wb_send_test('1', 1, x"F0000020", 0, '0', '0');  -- 1 rd
         wb_send_test('1', 1, x"F0000030", 0, '0', '0');  -- 1 rd
-        wb_send_test('0', 1, x"F0000040", 0, '0', '0');  -- 1 rd
+        wb_send_test('0', 1, x"F0000040", 0, '0', '1');  -- 1 rd
          
         wait;
   end process;

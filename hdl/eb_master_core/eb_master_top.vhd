@@ -34,53 +34,153 @@ use work.wishbone_pkg.all;
 use work.eb_internals_pkg.all;
 use work.eb_hdr_pkg.all;
 use work.etherbone_pkg.all;
+use work.wr_fabric_pkg.all;
 
 entity eb_master_top is
+generic(g_mtu : natural := 32);
 port(
-  clk_i       : in  std_logic;
-  rst_n_i     : in  std_logic;
+  clk_i         : in  std_logic;
+  rst_n_i       : in  std_logic;
 
-  slave_i     : in  t_wishbone_slave_in;
-  slave_o     : out t_wishbone_slave_out;
+  slave_i       : in  t_wishbone_slave_in;
+  slave_o       : out t_wishbone_slave_out;
+  tx_send_now_i : in std_logic;
   
-  src_i        : in  t_wrf_source_in;
-  src_o        : out t_wrf_source_out
+  src_i         : in  t_wrf_source_in;
+  src_o         : out t_wrf_source_out
 );
 end eb_master_top;
 
 architecture rtl of eb_master_top is
 
+  signal s_adr_hi         : t_wishbone_address;
+  signal s_cfg_rec_hdr    : t_rec_hdr;
+  
+  signal r_drain          : std_logic;
+  signal s_dat            : t_wishbone_data;
+  signal s_ack            : std_logic;
+  signal s_err            : std_logic;
+  signal s_stall          : std_logic;
+  signal s_rst_n          : std_logic;
+  signal wb_rst_n         : std_logic;
 
-signal r_err    : std_logic;
-signal r_stall  : std_logic;
-signal r_rst_n  : std_logic;
-signal push     : std_logic;
-
+  signal s_tx_fifo_stall  : std_logic;
+  signal s_tx_fifo_full   : std_logic;
+  signal s_tx_fifo_push   : std_logic;
+  signal s_tx_fifo_d      : t_wishbone_data;
+  signal s_tx_fifo_empty  : std_logic;
+  signal s_tx_fifo_pop    : std_logic;
+  signal s_tx_fifo_q      : t_wishbone_data;
+      
   signal s_his_mac,  s_my_mac  : std_logic_vector(47 downto 0);
   signal s_his_ip,   s_my_ip   : std_logic_vector(31 downto 0);
   signal s_his_port, s_my_port : std_logic_vector(15 downto 0);
-  
-  signal s_tx_stb     : std_logic;
-  signal s_tx_stall   : std_logic;
-  signal s_skip_stb   : std_logic;
-  signal s_skip_stall : std_logic;
-  signal s_length     : unsigned(15 downto 0); -- of UDP in words
-  
-  signal s_rx2widen   : t_wishbone_master_out;
-  signal s_widen2rx   : t_wishbone_master_in;
-  signal s_widen2fsm  : t_wishbone_master_out;
-  signal s_fsm2widen  : t_wishbone_master_in;
-  signal s_fsm2narrow : t_wishbone_master_out;
-  signal s_narrow2fsm : t_wishbone_master_in;
-  signal s_narrow2tx  : t_wishbone_master_out;
-  signal s_tx2narrow  : t_wishbone_master_in;
-  
 
+  signal s_tx_stb         : std_logic;
+  signal s_tx_stall       : std_logic;
+  signal s_tx_flush       : std_logic;
+  
+  signal s_skip_stb       : std_logic;
+  signal s_skip_stall     : std_logic;
+  signal s_length         : unsigned(15 downto 0); -- of UDP in words
+
+  signal s_framer2narrow  : t_wishbone_master_out;
+  signal s_narrow2framer  : t_wishbone_master_in;
+  signal s_narrow2tx      : t_wishbone_master_out;
+  signal s_tx2narrow      : t_wishbone_master_in;
+  
+begin
 -- instances:
+-- eb_fifo
 -- eb_master_wb_if
 -- eb_framer
 -- eb_eth_tx
 -- eb_stream_narrow
+
+  s_tx_stall <= '0';
+  s_skip_stb <= '0';
+  s_skip_stall <= '0';
+  s_rst_n <= wb_rst_n and rst_n_i;
+  
+  
+  
+   wbif: eb_master_wb_if
+    PORT MAP (
+  clk_i       => clk_i,
+  rst_n_i     => rst_n_i,
+
+  wb_rst_n_o  => wb_rst_n,
+  flush_o     => open,
+
+  slave_i     => slave_i,
+  slave_dat_o => s_dat,
+  slave_ack_o => s_ack,
+  slave_err_o => s_err,
+  
+  my_mac_o    => s_my_mac,
+  my_ip_o     => s_my_ip,
+  my_port_o   => s_my_port,
+  
+  his_mac_o   => s_his_mac, 
+  his_ip_o    => s_his_ip,
+  his_port_o  => s_his_port,
+  length_o    => s_length,
+  
+  adr_hi_o    => s_adr_hi,
+  eb_opt_o    => s_cfg_rec_hdr
+  );
+  
+
+  framer: eb_framer 
+   generic map(g_mtu => 512)
+   PORT MAP (
+         
+		  clk_i           => clk_i,
+		  rst_n_i         => s_rst_n,
+      slave_i  			  => slave_i,
+			slave_stall_o	  => s_stall,
+			tx_send_now_i   => tx_send_now_i,
+      tx_data_o       => s_tx_fifo_d,
+      tx_stb_o        => s_tx_fifo_push,
+      tx_stall_i      => s_tx_fifo_stall,
+      tx_flush_o      => s_tx_flush, 
+      adr_hi_i        => s_adr_hi,    
+			cfg_rec_hdr_i		=> s_cfg_rec_hdr
+			);  
+
+s_tx_fifo_stall <= s_tx_fifo_full;
+
+--SLAVE IF
+slave_o.dat   <= s_dat;
+slave_o.ack   <= s_ack;
+slave_o.err   <= s_err;
+slave_o.stall <= s_stall;
+slave_o.int   <= '0';
+slave_o.rty   <= '0';
+
+  tx_fifo : eb_fifo
+    generic map(
+      g_width => 32,
+      g_size  => 1500/4)
+    port map (
+      clk_i     => clk_i,
+      rstn_i    => s_rst_n,
+      w_full_o  => s_tx_fifo_full,
+      w_push_i  => s_tx_fifo_push,
+      w_dat_i   => s_tx_fifo_d,
+      r_empty_o => s_tx_fifo_empty,
+      r_pop_i   => s_tx_fifo_pop,
+      r_dat_o   => s_tx_fifo_q);
+
+s_tx_fifo_pop <= r_drain and not (s_narrow2framer.stall or s_tx_fifo_empty);
+    s_tx_stb <= r_drain;
+    
+s_framer2narrow.cyc <= r_drain;
+s_framer2narrow.stb <= r_drain and not s_tx_fifo_empty;
+s_framer2narrow.dat <= s_tx_fifo_q;
+s_framer2narrow.adr <= (others => '0');
+s_framer2narrow.sel <= (others => '1');
+s_framer2narrow.we <= '1';
 
 narrow : eb_stream_narrow
     generic map(
@@ -88,18 +188,20 @@ narrow : eb_stream_narrow
       g_master_width => 16)
     port map(
       clk_i    => clk_i,
-      rst_n_i  => nRst_i,
-      slave_i  => s_fsm2narrow,
-      slave_o  => s_narrow2fsm,
+      rst_n_i  => s_rst_n,
+      slave_i  => s_framer2narrow,
+      slave_o  => s_narrow2framer,
       master_i => s_tx2narrow,
       master_o => s_narrow2tx);
 
+      
+
   tx : eb_eth_tx
     generic map(
-      g_mtu => g_mtu)
+      g_mtu => 1500)
     port map(
       clk_i        => clk_i,
-      rst_n_i      => nRst_i,
+      rst_n_i      => s_rst_n,
       src_i        => src_i,
       src_o        => src_o,
       slave_o      => s_tx2narrow,
@@ -116,38 +218,16 @@ narrow : eb_stream_narrow
       my_ip_i      => s_my_ip,
       my_port_i    => s_my_port);
 
-begin
-
---SLAVE IF
-slave_o.ack   <= r_ack;
-slave_o.err   <= r_err;
-slave_o.stall <= r_stall;
-slave_o.int   <= '0';
-slave_o.rty   <= '0';
-push <= slave_i.cyc and slave_i.stb and r_stall;
-
---CTRL REGs
-his_mac_o   <= r_ctrl(c_DST_MAC_HI) & r_ctrl(c_DST_MAC_HI)(31 downto 16);
-his_ip_o    <= r_ctrl(c_DST_IPV4);
-his_port_o  <= r_ctrl(c_DST_UDP_PORT)(s_his_port'left downto 0);
-my_mac_o    <= r_ctrl(c_SRC_MAC_HI) & r_ctrl(c_SRC_MAC_HI)(31 downto 16);
-my_ip_o     <= r_ctrl(c_SRC_IPV4);
-my_port_o   <= r_ctrl(c_SRC_UDP_PORT)(s_my_port'left downto 0);
-length_o    <= r_ctrl(c_MTU)(s_length'left downto 0));
-adr_hi_o    <= r_ctrl(c_OPA_HI);
-eb_opt_o    <= r_ctrl(c_EB_OPT);
-
-
 p_main : process (clk_i, rst_n_i) is
-variable v_adr : t_r_adr;
-
 
 begin
 	if rst_n_i = '0' then
+	  r_drain <= '0';
 	elsif rising_edge(clk_i) then
-    
+    r_drain <= (r_drain or s_tx_flush) and not s_tx_fifo_empty;
+
   end if;
-end if;
+
 end process;
 
 end architecture;

@@ -36,31 +36,41 @@ use work.etherbone_pkg.all;
 use work.eb_internals_pkg.all;
 
 entity eb_framer is
+  generic(g_mtu : natural := 32);
   port(
     clk_i           : in  std_logic;            -- WB Clock
     rst_n_i         : in  std_logic;            -- async reset
 
     slave_i         : in  t_wishbone_slave_in;  -- WB op. -> not WB compliant, but the record format is convenient
     slave_stall_o   : out std_logic;            -- flow control    
-    
-    EB_tx_o         : out t_wishbone_master_out;
-    EB_tx_i         : in  t_wishbone_master_in;
     tx_send_now_i   : in std_logic;
     
-    cfg_rec_hdr_i   : t_rec_hdr; -- EB cfg information, eg read from cfg space etc
-    mtu_i           : in unsigned(15 downto 0)
+    tx_data_o       : out t_wishbone_data;
+    tx_stb_o        : out std_logic;
+    tx_stall_i      : in std_logic;  
+    tx_flush_o      : out std_logic; 
+    
+    adr_hi_i        : in t_wishbone_address;
+    cfg_rec_hdr_i   : in t_rec_hdr -- EB cfg information, eg read from cfg space etc
 );   
 end eb_framer;
 
 architecture rtl of eb_framer is
 
 --signals
-signal op_fifo_q      : std_logic_vector(32 downto 0);
-signal op_fifo_d      : std_logic_vector(32 downto 0);
+signal ctrl_fifo_q    : std_logic_vector(0 downto 0);
+signal ctrl_fifo_d    : std_logic_vector(0 downto 0);
+
+signal eop            : std_logic;
+signal r_eop          : std_logic;
+
+signal op_fifo_q      : std_logic_vector(31 downto 0);
+signal op_fifo_d      : std_logic_vector(31 downto 0);
 signal op_fifo_push   : std_logic;
 signal op_fifo_pop    : std_logic;
 signal op_fifo_full   : std_logic;
 signal op_fifo_empty  : std_logic;
+
 signal dat            : t_wishbone_data;
 signal adr            : t_wishbone_address;
 signal we             : std_logic;
@@ -89,15 +99,13 @@ begin
   cyc <= slave_i.cyc;
   stb <= slave_i.stb;
   we <=  slave_i.we;
-  adr <= slave_i.adr;
+  adr <= std_logic_vector(unsigned(slave_i.adr) + unsigned(adr_hi_i));
   dat <= slave_i.dat;
 
   slave_stall_o <= r_stall;
-  EB_tx_o.sel <= (others => '1');
-  EB_tx_o.adr <= (others => '0');
 
   rgen: eb_record_gen 
-
+  generic map(g_mtu => g_mtu)
     PORT MAP (
          
       clk_i           => clk_i,
@@ -112,15 +120,14 @@ begin
       rec_adr_rd_o    => adr_rd, 
       rec_adr_wr_o    => adr_wr,
       
-      cfg_rec_hdr_i   => cfg_rec_hdr_i,
-      mtu_i           => mtu_i); 
+      cfg_rec_hdr_i   => cfg_rec_hdr_i); 
  
 ------------------------------------------------------------------------------
 -- fifos
 ------------------------------------------------------------------------------
   op_fifo : eb_fifo
     generic map(
-      g_width => 33,
+      g_width => 32,
       g_size  => 256)
     port map (
       clk_i     => clk_i,
@@ -131,66 +138,81 @@ begin
       r_empty_o => op_fifo_empty,
       r_pop_i   => op_fifo_pop,
       r_dat_o   => op_fifo_q);
+      
+   ctrl_fifo : eb_fifo
+    generic map(
+      g_width => 1,
+      g_size  => 256)
+    port map (
+      clk_i     => clk_i,
+      rstn_i    => rst_n_i,
+      w_full_o  => open,
+      w_push_i  => op_fifo_push,
+      w_dat_i   => ctrl_fifo_d,
+      r_empty_o => open,
+      r_pop_i   => op_fifo_pop,
+      r_dat_o   => ctrl_fifo_q);
+       
 
   op_fifo_pop   <= op_pop and not op_fifo_empty;
   op_fifo_push  <= cyc and stb and not r_stall;
-  op_fifo_d(31 downto 0) <= dat when we = '1'
+  op_fifo_d <= dat when we = '1'
               else adr;
               
-  op_fifo_d(32) <= tx_send_now_i; 
-
+  ctrl_fifo_d(0) <= tx_send_now_i;
+  eop <= ctrl_fifo_q(0);
+  
+  tx_flush_o <= r_eop;
 ------------------------------------------------------------------------------
 -- Output Mux
 ------------------------------------------------------------------------------
   OMux : with r_mux_state select
-  EB_tx_o.dat <=  op_fifo_q(31 downto 0)  when s_WRITE | s_READ,
-               f_format_rec(rec_hdr)      when s_REC,
-               adr_wr                     when s_WA,
-               adr_rd                     when s_RA, 
-               f_format_eb(r_eb_hdr)      when s_EB,
-               (others => '0')            when others;
+  tx_data_o <= op_fifo_q(31 downto 0)  when s_WRITE | s_READ,
+               f_format_rec(rec_hdr)   when s_REC,
+               adr_wr                  when s_WA,
+               adr_rd                  when s_RA, 
+               f_format_eb(r_eb_hdr)   when s_EB,
+               (others => '0')         when others;
 
-
+      r_eb_hdr              <= c_eb_init;
 
   p_eb_mux : process (clk_i, rst_n_i) is
   variable v_state        : t_mux_state;
  
   begin
     if rst_n_i = '0' then
-      r_mux_state <= s_IDLE;
-      r_eb_hdr    <= c_eb_init;
-      r_eb_hdr.no_response <= '0';
-      r_first_rec  <= '1';
-      EB_tx_o.cyc <= '0';  
-    elsif rising_edge(clk_i) then
+      r_mux_state           <= s_IDLE;
+
+      --r_eb_hdr.no_response  <= '0';
       
+      r_first_rec           <= '1';
+      r_eop                 <= '0'; 
+    elsif rising_edge(clk_i) then
+
       v_state     := r_mux_state;                    
-      EB_tx_o.stb <= '0';
       op_pop      <= '0';
+      tx_stb_o    <= '0';
       r_rec_ack   <= '0';
       
-      if(op_fifo_q(32) = '1') then
-        r_first_rec  <= '1';
-      end if;
+      r_first_rec <= r_first_rec  or eop;
+      r_eop       <= r_eop        or eop; --(tx_send_now_i or eop);
+    
       
       case r_mux_state is
         when s_IDLE   =>  if(rec_valid = '1') then
-                           
-                           
                            if(r_first_rec = '1') then
                               r_first_rec <= '0';
-                              EB_tx_o.cyc <= '1';
                               v_state     := s_EB;
                             else
-                              v_state    := s_REC;
+                              v_state     := s_REC;
                             end if;
                           end if;
                           
-        when s_EB     =>  if(EB_tx_i.stall = '0') then
+        when s_EB     =>  if(tx_stall_i = '0') then
                             v_state    := s_REC; -- output EB hdr                         
                           end if;
                           
-        when s_REC    =>  if(EB_tx_i.stall = '0') then
+        when s_REC    =>  if(tx_stall_i = '0') then
                             if(rec_hdr.wr_cnt + rec_hdr.rd_cnt /= 0) then -- output record hdr
                               if(rec_hdr.wr_cnt /= 0) then
                                 v_state    := s_WA; 
@@ -202,13 +224,13 @@ begin
                             end if;
                           end if;
         
-        when s_WA     =>  if(EB_tx_i.stall = '0') then
+        when s_WA     =>  if(tx_stall_i = '0') then
                             r_cnt_ops    <= '0' & rec_hdr.wr_cnt -2; -- output write base address
                             op_pop    <= '1';
                             v_state    := s_WRITE;
                           end if;               
         
-        when s_WRITE  =>  if(EB_tx_i.stall = '0') then
+        when s_WRITE  =>  if(tx_stall_i = '0') then
                             if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output write values
                               if(rec_hdr.rd_cnt /= 0) then
                                 v_state := s_RA;
@@ -221,13 +243,13 @@ begin
                             end if;
                           end if;
         
-        when s_RA     =>  if(EB_tx_i.stall = '0') then
+        when s_RA     =>  if(tx_stall_i = '0') then
                             r_cnt_ops    <= '0' & rec_hdr.rd_cnt -2; -- output readback address
                             op_pop    <= '1';
                             v_state    := s_READ;
                           end if;  
         
-        when s_READ   =>  if(EB_tx_i.stall = '0') then
+        when s_READ   =>  if(tx_stall_i = '0') then
                             if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output read addresses
                               v_state := s_DONE;
                             else
@@ -236,14 +258,15 @@ begin
                             end if;
                           end if;
         
-        when s_DONE   =>  v_state := s_IDLE;
+        when s_DONE   =>  r_eop         <= '0';
+                          v_state       := s_IDLE;
         
         when others   =>  v_state := s_IDLE;
       end case;
     
       -- flags on state transition
       if((v_state /= s_IDLE) and (v_state /= s_DONE)) then
-        EB_tx_o.stb    <= '1';
+        tx_stb_o    <= '1';
       end if;
       if(v_state = s_DONE) then
         r_rec_ack <= '1';

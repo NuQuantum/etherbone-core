@@ -81,6 +81,8 @@ begin
   slave_o.err   <= '0';
   slave_o.stall <= s_stall;
   slave_o.dat   <= (others => '0');
+  slave_o.rty   <= '0';
+  slave_o.int   <= '0';
   
   master_o.cyc <= r_cyc;
   master_o.stb <= r_stb;
