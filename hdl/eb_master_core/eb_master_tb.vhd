@@ -132,6 +132,7 @@ slave_stall <= master_i.stall;
   
    begin        
         rst_n <= '0';
+        eop <= '0';
         src_i <= c_dummy_src_in;
         master_o			<= c_dummy_master_out;
 	      master_o.sel <= x"f";

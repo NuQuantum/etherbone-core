@@ -345,9 +345,8 @@ package eb_internals_pkg is
       slave_stall_o   : out std_logic;       
       tx_send_now_i   : in  std_logic;
       
-      tx_data_o       : out t_wishbone_data;
-      tx_stb_o        : out std_logic;
-      tx_stall_i      : in  std_logic;
+      master_o        : out t_wishbone_master_out;
+      master_i        : in  t_wishbone_master_in; 
       tx_flush_o      : out std_logic;
       adr_hi_i        : in t_wishbone_address;
       cfg_rec_hdr_i   : in t_rec_hdr);   

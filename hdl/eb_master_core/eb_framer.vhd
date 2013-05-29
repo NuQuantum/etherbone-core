@@ -45,9 +45,8 @@ entity eb_framer is
     slave_stall_o   : out std_logic;            -- flow control    
     tx_send_now_i   : in std_logic;
     
-    tx_data_o       : out t_wishbone_data;
-    tx_stb_o        : out std_logic;
-    tx_stall_i      : in std_logic;  
+    master_o        : out t_wishbone_master_out;
+    master_i        : in  t_wishbone_master_in; 
     tx_flush_o      : out std_logic; 
     
     adr_hi_i        : in t_wishbone_address;
@@ -76,6 +75,8 @@ signal adr            : t_wishbone_address;
 signal we             : std_logic;
 signal stb            : std_logic;
 signal cyc            : std_logic;
+
+signal tx_cyc            : std_logic;
 signal r_wait_for_tx  : std_logic;
 signal r_rec_ack      : std_logic;
 signal r_stall        : std_logic;
@@ -160,14 +161,16 @@ begin
               else adr;
               
   ctrl_fifo_d(0) <= tx_send_now_i;
-  eop <= ctrl_fifo_q(0);
+  eopmux : with r_mux_state select
+  eop <= '0'              when s_IDLE,
+          ctrl_fifo_q(0)  when others;
   
-  tx_flush_o <= r_eop;
+  master_o.cyc <= tx_cyc;
 ------------------------------------------------------------------------------
 -- Output Mux
 ------------------------------------------------------------------------------
   OMux : with r_mux_state select
-  tx_data_o <= op_fifo_q(31 downto 0)  when s_WRITE | s_READ,
+  master_o.dat <= op_fifo_q(31 downto 0)  when s_WRITE | s_READ,
                f_format_rec(rec_hdr)   when s_REC,
                adr_wr                  when s_WA,
                adr_rd                  when s_RA, 
@@ -184,38 +187,40 @@ begin
       r_mux_state           <= s_IDLE;
 
       --r_eb_hdr.no_response  <= '0';
-      
-      r_first_rec           <= '1';
-      r_eop                 <= '0'; 
+      tx_cyc  <= '0';
+      r_first_rec   <= '1';
+      r_eop         <= '0'; 
     elsif rising_edge(clk_i) then
 
-      v_state     := r_mux_state;                    
-      op_pop      <= '0';
-      tx_stb_o    <= '0';
-      r_rec_ack   <= '0';
+      v_state       := r_mux_state;                    
+      op_pop        <= '0';
+      master_o.stb  <= '0';
+      r_rec_ack     <= '0';
+      tx_flush_o    <= '0';
+      r_first_rec   <= r_first_rec  or eop;
+      r_eop         <= r_eop        or eop; --(tx_send_now_i or eop);
       
-      r_first_rec <= r_first_rec  or eop;
-      r_eop       <= r_eop        or eop; --(tx_send_now_i or eop);
-    
       
       case r_mux_state is
         when s_IDLE   =>  if(rec_valid = '1') then
                            if(r_first_rec = '1') then
-                              r_first_rec <= '0';
-                              v_state     := s_EB;
+                              tx_cyc  <= '1';
+                              tx_flush_o <= '1';
+                              r_first_rec   <= '0';
+                              v_state       := s_EB;
                             else
-                              v_state     := s_REC;
+                              v_state       := s_REC;
                             end if;
                           end if;
                           
-        when s_EB     =>  if(tx_stall_i = '0') then
+        when s_EB     =>  if(master_i.stall = '0') then
                             v_state    := s_REC; -- output EB hdr                         
                           end if;
                           
-        when s_REC    =>  if(tx_stall_i = '0') then
+        when s_REC    =>  if(master_i.stall = '0') then
                             if(rec_hdr.wr_cnt + rec_hdr.rd_cnt /= 0) then -- output record hdr
                               if(rec_hdr.wr_cnt /= 0) then
-                                v_state    := s_WA; 
+                                v_state    := s_WA;
                               else
                                 v_state    := s_RA;
                               end if;
@@ -224,13 +229,13 @@ begin
                             end if;
                           end if;
         
-        when s_WA     =>  if(tx_stall_i = '0') then
+        when s_WA     =>  if(master_i.stall = '0') then
                             r_cnt_ops    <= '0' & rec_hdr.wr_cnt -2; -- output write base address
                             op_pop    <= '1';
                             v_state    := s_WRITE;
                           end if;               
         
-        when s_WRITE  =>  if(tx_stall_i = '0') then
+        when s_WRITE  =>  if(master_i.stall = '0') then
                             if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output write values
                               if(rec_hdr.rd_cnt /= 0) then
                                 v_state := s_RA;
@@ -243,13 +248,13 @@ begin
                             end if;
                           end if;
         
-        when s_RA     =>  if(tx_stall_i = '0') then
+        when s_RA     =>  if(master_i.stall = '0') then
                             r_cnt_ops    <= '0' & rec_hdr.rd_cnt -2; -- output readback address
                             op_pop    <= '1';
                             v_state    := s_READ;
                           end if;  
         
-        when s_READ   =>  if(tx_stall_i = '0') then
+        when s_READ   =>  if(master_i.stall = '0') then
                             if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output read addresses
                               v_state := s_DONE;
                             else
@@ -258,7 +263,8 @@ begin
                             end if;
                           end if;
         
-        when s_DONE   =>  r_eop         <= '0';
+        when s_DONE   =>  tx_cyc        <= not r_eop;
+                          r_eop         <= '0';
                           v_state       := s_IDLE;
         
         when others   =>  v_state := s_IDLE;
@@ -266,7 +272,7 @@ begin
     
       -- flags on state transition
       if((v_state /= s_IDLE) and (v_state /= s_DONE)) then
-        tx_stb_o    <= '1';
+        master_o.stb    <= '1';
       end if;
       if(v_state = s_DONE) then
         r_rec_ack <= '1';
