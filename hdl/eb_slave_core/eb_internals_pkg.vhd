@@ -296,7 +296,8 @@ package eb_internals_pkg is
 ----------------------------------------------------------------- 
  
   component eb_master_top is
-  generic(g_mtu : natural := 32);
+  generic(g_adr_bits_hi : natural := 8;
+        g_mtu : natural := 32);
     port(
       clk_i       : in  std_logic;
       rst_n_i     : in  std_logic;
@@ -348,7 +349,6 @@ package eb_internals_pkg is
       master_o        : out t_wishbone_master_out;
       master_i        : in  t_wishbone_master_in; 
       tx_flush_o      : out std_logic;
-      adr_hi_i        : in t_wishbone_address;
       cfg_rec_hdr_i   : in t_rec_hdr);   
   end component;
   

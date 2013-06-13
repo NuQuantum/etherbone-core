@@ -49,7 +49,6 @@ entity eb_framer is
     master_i        : in  t_wishbone_master_in; 
     tx_flush_o      : out std_logic; 
     
-    adr_hi_i        : in t_wishbone_address;
     cfg_rec_hdr_i   : in t_rec_hdr -- EB cfg information, eg read from cfg space etc
 );   
 end eb_framer;
@@ -100,7 +99,7 @@ begin
   cyc <= slave_i.cyc;
   stb <= slave_i.stb;
   we <=  slave_i.we;
-  adr <= std_logic_vector(unsigned(slave_i.adr) + unsigned(adr_hi_i));
+  adr <= slave_i.adr;
   dat <= slave_i.dat;
 
   slave_stall_o <= r_stall;
@@ -166,6 +165,9 @@ begin
           ctrl_fifo_q(0)  when others;
   
   master_o.cyc <= tx_cyc;
+  master_o.we <= '0';
+  master_o.sel <= (others => '1');
+  master_o.adr <= (others => '0');
 ------------------------------------------------------------------------------
 -- Output Mux
 ------------------------------------------------------------------------------

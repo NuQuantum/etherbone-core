@@ -63,7 +63,8 @@ BEGIN
 --			);      
 
 uut: eb_master_top 
-   GENERIC MAP(g_mtu => 32)
+   GENERIC MAP(g_adr_bits_hi => 4,
+               g_mtu => 32)
    PORT MAP (
          
 		  clk_i           => clk,

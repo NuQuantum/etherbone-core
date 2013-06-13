@@ -37,7 +37,8 @@ use work.etherbone_pkg.all;
 use work.wr_fabric_pkg.all;
 
 entity eb_master_top is
-generic(g_mtu : natural := 32);
+generic(g_adr_bits_hi : natural := 8;
+        g_mtu : natural := 32);
 port(
   clk_i         : in  std_logic;
   rst_n_i       : in  std_logic;
@@ -77,13 +78,19 @@ architecture rtl of eb_master_top is
   signal s_skip_stall     : std_logic;
   signal s_length         : unsigned(15 downto 0); -- of UDP in words
 
-  signal s_master_o        : t_wishbone_master_out;
-  signal s_master_i        : t_wishbone_master_in; 
+  signal s_slave_i        : t_wishbone_slave_in; 
+
+  signal s_master_o       : t_wishbone_master_out;
+  signal s_master_i       : t_wishbone_master_in; 
 
   signal s_framer2narrow  : t_wishbone_master_out;
   signal s_narrow2framer  : t_wishbone_master_in;
   signal s_narrow2tx      : t_wishbone_master_out;
   signal s_tx2narrow      : t_wishbone_master_in;
+  
+  constant c_adr_mask     : t_wishbone_address := t_wishbone_address(to_unsigned((t_wishbone_address'length-g_adr_bits_hi)-1, t_wishbone_address'length));
+  constant c_ctrl_bit     : natural := t_wishbone_address'length - g_adr_bits_hi;
+  constant c_rw_bit       : natural := t_wishbone_address'length - g_adr_bits_hi+1;
   
 begin
 -- instances:
@@ -133,6 +140,26 @@ begin
   eb_opt_o    => s_cfg_rec_hdr
   );
   
+  
+  s_slave_i.stb <= slave_i.stb;
+  s_slave_i.dat <= slave_i.dat;
+  s_slave_i.sel <= slave_i.sel;
+
+  -- address layout: 
+  --    
+  --  -----------
+  --  |         |
+  --  |         |
+  --  |  ctrl   |
+  --  |_________|
+  --  |  Read   |
+  --  |_________|
+  --  |  Write  |
+  --  |_________|   
+
+  s_slave_i.cyc <= slave_i.cyc and slave_i.adr(c_ctrl_bit);
+  s_slave_i.we  <= not slave_i.adr(c_rw_bit); 
+  s_slave_i.adr <= s_adr_hi(s_adr_hi'left downto s_adr_hi'length-g_adr_bits_hi) & slave_i.adr(slave_i.adr'left-g_adr_bits_hi downto 0); 
 
   framer: eb_framer 
    generic map(g_mtu => 512)
@@ -140,14 +167,13 @@ begin
          
 		  clk_i           => clk_i,
 		  rst_n_i         => s_rst_n,
-      slave_i  			  => slave_i,
+      slave_i  			  => s_slave_i,
 			slave_stall_o	  => s_stall,
 			tx_send_now_i   => tx_send_now_i,
       master_o        => s_framer2narrow,
       master_i        => s_narrow2framer,
       tx_flush_o      => s_tx_flush, 
-      adr_hi_i        => s_adr_hi,    
-			cfg_rec_hdr_i		=> s_cfg_rec_hdr
+      cfg_rec_hdr_i		=> s_cfg_rec_hdr
 			);  
 
 
