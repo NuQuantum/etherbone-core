@@ -36,6 +36,7 @@ use work.eb_hdr_pkg.all;
 use work.etherbone_pkg.all;
 
 entity eb_master_wb_if is
+generic(g_adr_bits_hi : natural := 8);
 port(
   clk_i       : in  std_logic;
   rst_n_i     : in  std_logic;
@@ -69,23 +70,23 @@ constant c_ctrl_reg_spc_width : natural := 5; --fix me: need log2 function
 
 subtype t_r_adr is natural range 0 to 2**c_ctrl_reg_spc_width-1;
 --Register map
-constant c_RESET        : t_r_adr := 0;                 --wo
-constant c_FLUSH        : t_r_adr := c_RESET        +1; --wo
-constant c_STATUS       : t_r_adr := c_FLUSH        +1; --rw
-constant c_SRC_MAC_HI   : t_r_adr := c_STATUS       +1; --rw
-constant c_SRC_MAC_LO   : t_r_adr := c_SRC_MAC_HI   +1; --rw
-constant c_SRC_IPV4     : t_r_adr := c_SRC_MAC_LO   +1; --rw
-constant c_SRC_UDP_PORT : t_r_adr := c_SRC_IPV4     +1; --rw
-constant c_DST_MAC_HI   : t_r_adr := c_SRC_UDP_PORT +1; --rw
-constant c_DST_MAC_LO   : t_r_adr := c_DST_MAC_HI   +1; --rw
-constant c_DST_IPV4     : t_r_adr := c_DST_MAC_LO   +1; --rw
-constant c_DST_UDP_PORT : t_r_adr := c_DST_IPV4     +1; --rw
-constant c_MTU          : t_r_adr := c_DST_UDP_PORT +1; --rw
-constant c_OPA_HI       : t_r_adr := c_MTU          +1; --rw
-constant c_OPA_MSK      : t_r_adr := c_OPA_HI       +1; --rw
-constant c_WOA_BASE     : t_r_adr := c_OPA_MSK      +1; --ro
-constant c_ROA_BASE     : t_r_adr := c_WOA_BASE     +1; --ro
-constant c_EB_OPT       : t_r_adr := c_ROA_BASE     +1; --rw
+constant c_RESET        : t_r_adr := 0;                 --wo    00
+constant c_FLUSH        : t_r_adr := c_RESET        +1; --wo    04
+constant c_STATUS       : t_r_adr := c_FLUSH        +1; --rw    08
+constant c_SRC_MAC_HI   : t_r_adr := c_STATUS       +1; --rw    0C
+constant c_SRC_MAC_LO   : t_r_adr := c_SRC_MAC_HI   +1; --rw    10 
+constant c_SRC_IPV4     : t_r_adr := c_SRC_MAC_LO   +1; --rw    14 
+constant c_SRC_UDP_PORT : t_r_adr := c_SRC_IPV4     +1; --rw    18
+constant c_DST_MAC_HI   : t_r_adr := c_SRC_UDP_PORT +1; --rw    1C
+constant c_DST_MAC_LO   : t_r_adr := c_DST_MAC_HI   +1; --rw    20
+constant c_DST_IPV4     : t_r_adr := c_DST_MAC_LO   +1; --rw    24
+constant c_DST_UDP_PORT : t_r_adr := c_DST_IPV4     +1; --rw    28
+constant c_MTU          : t_r_adr := c_DST_UDP_PORT +1; --rw    2C
+constant c_OPA_HI       : t_r_adr := c_MTU          +1; --rw    30
+constant c_OPA_MSK      : t_r_adr := c_OPA_HI       +1; --rw    34
+constant c_WOA_BASE     : t_r_adr := c_OPA_MSK      +1; --ro    38
+constant c_ROA_BASE     : t_r_adr := c_WOA_BASE     +1; --ro    3C
+constant c_EB_OPT       : t_r_adr := c_ROA_BASE     +1; --rw    40
 constant c_LAST         : t_r_adr := c_EB_OPT; 
 
 constant c_STAT_CONFIGURED  : t_wishbone_data := x"00000001";
@@ -103,7 +104,7 @@ signal r_flush  : std_logic;
 signal push     : std_logic;
 signal r_busy   : std_logic;
 signal r_eb_sent : std_logic;
-
+constant c_adr_mask : std_logic_vector(31 downto 0) := not std_logic_vector(to_unsigned(2**(32-g_adr_bits_hi+1)-1, 32));
 
 
 
@@ -119,10 +120,10 @@ r_eb_sent <= r_busy;
 --CTRL REGs
 wb_rst_n_o  <= r_rst_n;
 flush_o     <= r_flush;
-his_mac_o   <= r_ctrl(c_DST_MAC_HI) & r_ctrl(c_DST_MAC_HI)(31 downto 16);
+his_mac_o   <= r_ctrl(c_DST_MAC_HI) & r_ctrl(c_DST_MAC_LO)(31 downto 16);
 his_ip_o    <= r_ctrl(c_DST_IPV4);
 his_port_o  <= r_ctrl(c_DST_UDP_PORT)(his_port_o'left downto 0);
-my_mac_o    <= r_ctrl(c_SRC_MAC_HI) & r_ctrl(c_SRC_MAC_HI)(31 downto 16);
+my_mac_o    <= r_ctrl(c_SRC_MAC_HI) & r_ctrl(c_SRC_MAC_LO)(31 downto 16);
 my_ip_o     <= r_ctrl(c_SRC_IPV4);
 my_port_o   <= r_ctrl(c_SRC_UDP_PORT)(my_port_o'left downto 0);
 length_o    <= unsigned(r_ctrl(c_MTU)(length_o'left downto 0));
@@ -170,12 +171,12 @@ begin
     r_rst_n     <= '1';
     r_flush     <= '0';    
     --r_debug_adr <= slave_i.adr(5-1+3 downto 2); 
-    v_adr       := to_integer(unsigned(slave_i.adr(c_ctrl_reg_spc_width-1+2 downto 2))); 
+    v_adr       := to_integer(unsigned(slave_i.adr(7 downto 2))); 
     r_rst_n      <= '1';
     
     if(push = '1') then
       --CTRL REGISTERS
-      if(unsigned(slave_i.adr(slave_i.adr'left downto c_ctrl_reg_spc_width+2)) /= 0) then
+      if(slave_i.adr(32-g_adr_bits_hi+1) = '0') then
         if(slave_i.we = '1') then
           case v_adr is
             when c_RESET          => r_rst_n <= '0';
@@ -189,7 +190,7 @@ begin
             when c_DST_IPV4       => wr(v_adr);
             when c_DST_UDP_PORT   => wr(v_adr,  x"0000FFFF");
             when c_MTU            => wr(v_adr,  x"000000FF"); 
-            when c_OPA_HI         => wr(v_adr);
+            when c_OPA_HI         => wr(v_adr, c_adr_mask);
             when c_OPA_MSK        => wr(v_adr); 
             when c_EB_OPT         => wr(v_adr,  x"0000FFFF");
             when others           => r_err <= '1';
@@ -216,7 +217,7 @@ begin
           end case;    
         end if;
       --STAGING AREA   
-      elsif(unsigned(slave_i.adr and r_ctrl(c_OPA_MSK)) /= 0) then
+      else
         if(slave_i.we = '1') then
           -- check if the core is configured
           if( (r_ctrl(c_STATUS) and c_STAT_CONFIGURED) = c_STAT_CONFIGURED) then 
@@ -229,7 +230,7 @@ begin
         end if;
         
       --BAD/UNMAPPED ADR
-      else
+    
         r_err <= '1';
       end if;
     end if;

@@ -41,29 +41,36 @@ ARCHITECTURE behavior OF test_tb IS
 	signal en	            : std_logic;
 	signal eop	            : std_logic;
 	
+	
+constant c_RESET        : unsigned(31 downto 0) := x"00000000";
+constant c_FLUSH        : unsigned(31 downto 0) := c_RESET        +4; --wo    04
+constant c_STATUS       : unsigned(31 downto 0) := c_FLUSH        +4; --rw    08
+constant c_SRC_MAC_HI   : unsigned(31 downto 0) := c_STATUS       +4; --rw    0C
+constant c_SRC_MAC_LO   : unsigned(31 downto 0) := c_SRC_MAC_HI   +4; --rw    10 
+constant c_SRC_IPV4     : unsigned(31 downto 0) := c_SRC_MAC_LO   +4; --rw    14 
+constant c_SRC_UDP_PORT : unsigned(31 downto 0) := c_SRC_IPV4     +4; --rw    18
+constant c_DST_MAC_HI   : unsigned(31 downto 0) := c_SRC_UDP_PORT +4; --rw    1C
+constant c_DST_MAC_LO   : unsigned(31 downto 0) := c_DST_MAC_HI   +4; --rw    20
+constant c_DST_IPV4     : unsigned(31 downto 0) := c_DST_MAC_LO   +4; --rw    24
+constant c_DST_UDP_PORT : unsigned(31 downto 0) := c_DST_IPV4     +4; --rw    28
+constant c_MTU          : unsigned(31 downto 0) := c_DST_UDP_PORT +4; --rw    2C
+constant c_OPA_HI       : unsigned(31 downto 0) := c_MTU          +4; --rw    30
+constant c_OPA_MSK      : unsigned(31 downto 0) := c_OPA_HI       +4; --rw    34
+constant c_WOA_BASE     : unsigned(31 downto 0) := c_OPA_MSK      +4; --ro    38
+constant c_ROA_BASE     : unsigned(31 downto 0) := c_WOA_BASE     +4; --ro    3C
+constant c_EB_OPT       : unsigned(31 downto 0) := c_ROA_BASE     +4; --rw    40
+
+constant c_adr_hi_bits : natural := 4;
+
+
+	
    -- Clock period definitions
    constant clk_period : time := 8 ns;
 BEGIN
-    -- Instantiate the Unit Under Test (UUT)
---   uut: eb_framer 
---   PORT MAP (
-         
---		  clk_i           => clk,
---		  rst_n_i         => rst_n,
 
---		  slave_i  			  => master_o,
---			slave_stall_o	  => slave_stall,
-
---      EB_tx_o         => eb_tx_o,
---      EB_tx_i         => eb_tx_i,
---      tx_send_now_i   => eop, 
-    
---			cfg_rec_hdr_i		=> cfg_rec_hdr,
---			mtu_i           => to_unsigned(32, 16)
---			);      
 
 uut: eb_master_top 
-   GENERIC MAP(g_adr_bits_hi => 4,
+   GENERIC MAP(g_adr_bits_hi => c_adr_hi_bits,
                g_mtu => 32)
    PORT MAP (
          
@@ -94,6 +101,28 @@ slave_stall <= master_i.stall;
    -- Stimulus process
   stim_proc: process
   
+  
+   procedure wb_wr( adr : in unsigned(31 downto 0);
+                    dat : in std_logic_vector(31 downto 0)
+                  ) is
+  begin
+    
+    wait until rising_edge(clk);
+    master_o.cyc <= '1';
+    master_o.stb  <= '1';
+    master_o.we   <= '1';
+    master_o.adr  <= std_logic_vector(adr);
+    master_o.dat  <= dat;
+    wait for clk_period; 
+    while slave_stall = '1'loop
+      wait for clk_period; 
+    end loop;
+    master_o.stb <= '0';
+    master_o.cyc <= '0';  
+    wait for clk_period;    
+  end procedure wb_wr;
+  
+  
    procedure wb_send_test( hold : in std_logic;
                           ops : in natural;
                           offs : in unsigned(31 downto 0);
@@ -103,6 +132,7 @@ slave_stall <= master_i.stall;
                     ) is
   
   variable I : natural := 0;
+  variable tadr : unsigned(31 downto 0) := (others => '0');
   
   begin
     
@@ -111,8 +141,10 @@ slave_stall <= master_i.stall;
     wait for clk_period;    
     for I in 0 to ops-1 loop
       master_o.stb  <= '1';
-      master_o.we   <= we; 
-      master_o.adr  <= std_logic_vector(offs + to_unsigned(I*adr_inc, 32));
+      master_o.we   <= '1'; 
+      tadr(32-c_adr_hi_bits+1) := '1';
+      tadr(32-c_adr_hi_bits) := we;
+      master_o.adr  <= std_logic_vector(offs + tadr + to_unsigned(I*adr_inc, 32));
       master_o.dat  <= x"DEAD" & std_logic_vector(to_unsigned(I*adr_inc, 16));
       if(I = ops -1) then
         eop <= send;
@@ -144,25 +176,37 @@ slave_stall <= master_i.stall;
         rst_n <= '1';
         wait until rising_edge(clk);  
 
-        wb_send_test('1', 3, x"A0000000", 4, '1', '0');  -- 3 wr                    
+        wb_wr(c_SRC_MAC_HI,   x"D15EA5ED");
+        wb_wr(c_SRC_MAC_LO,   x"BEEF0000");
+        wb_wr(c_SRC_IPV4,     x"CAFEBABE");
+        wb_wr(c_SRC_UDP_PORT, x"0000EBD0");
+        wb_wr(c_DST_MAC_HI,   x"11223344");
+        wb_wr(c_DST_MAC_LO,   x"55660000");
+        wb_wr(c_DST_IPV4,     x"C0A80064");
+        wb_wr(c_DST_UDP_PORT, x"0000EBD1");
+        wb_wr(c_MTU,          x"00000020");
+        wb_wr(c_OPA_HI,       x"F1230000");
+        wb_wr(c_EB_OPT,       x"00000000");
+
+        wb_send_test('1', 3, x"00000000", 4, '1', '0');  -- 3 wr                    
         
-        wb_send_test('0', 1, x"A0000000", 4, '0', '1');  -- 1 wr 
+        wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 wr 
         
-        wb_send_test('1', 5, x"A0000000", 4, '1', '0');  -- 1 wr 
-        wb_send_test('0', 1, x"F0000000", 4, '0', '0');  -- 1 rd
+        wb_send_test('1', 5, x"00000000", 4, '1', '0');  -- 1 wr 
+        wb_send_test('0', 1, x"00001100", 4, '0', '0');  -- 1 rd
         
-        wb_send_test('1', 1, x"A0000000", 4, '1', '0');  -- 1 wr 
-        wb_send_test('0', 1, x"F0000000", 4, '0', '1');  -- 1 rd
+        wb_send_test('1', 1, x"00000000", 4, '1', '0');  -- 1 wr 
+        wb_send_test('0', 1, x"00001000", 4, '0', '1');  -- 1 rd
         
-        wb_send_test('1', 1, x"A0000000", 4, '1', '0');  -- 1 wr 
-        wb_send_test('0', 2, x"F0000000", 4, '0', '0');  -- 1 rd
+        wb_send_test('1', 1, x"00001000", 4, '1', '0');  -- 1 wr 
+        wb_send_test('0', 2, x"00001000", 4, '0', '0');  -- 1 rd
         
-        wb_send_test('1', 10, x"F0000000", 0, '0', '0');  -- 10 rd
-        wb_send_test('0', 10, x"F0000000", 4, '0', '0');  -- 10 rd
-        wb_send_test('1', 1, x"F0000010", 0, '0', '0');  -- 1 rd
-        wb_send_test('1', 1, x"F0000020", 0, '0', '0');  -- 1 rd
-        wb_send_test('1', 1, x"F0000030", 0, '0', '0');  -- 1 rd
-        wb_send_test('0', 1, x"F0000040", 0, '0', '1');  -- 1 rd
+        wb_send_test('1', 10, x"00000000", 0, '0', '0');  -- 10 rd
+        wb_send_test('0', 10, x"00000000", 4, '0', '0');  -- 10 rd
+        wb_send_test('1', 1, x"00000010", 0, '0', '0');  -- 1 rd
+        wb_send_test('1', 1, x"00000020", 0, '0', '0');  -- 1 rd
+        wb_send_test('1', 1, x"00000030", 0, '0', '0');  -- 1 rd
+        wb_send_test('0', 1, x"00000040", 0, '0', '1');  -- 1 rd
          
         wait;
   end process;

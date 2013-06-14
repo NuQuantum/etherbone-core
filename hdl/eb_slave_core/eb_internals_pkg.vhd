@@ -310,7 +310,8 @@ package eb_internals_pkg is
   end component ;
  
     component eb_master_wb_if is
-    port(
+    generic(g_adr_bits_hi : natural := 8);
+port(
   clk_i       : in  std_logic;
   rst_n_i     : in  std_logic;
 

@@ -88,9 +88,8 @@ architecture rtl of eb_master_top is
   signal s_narrow2tx      : t_wishbone_master_out;
   signal s_tx2narrow      : t_wishbone_master_in;
   
-  constant c_adr_mask     : t_wishbone_address := t_wishbone_address(to_unsigned((t_wishbone_address'length-g_adr_bits_hi)-1, t_wishbone_address'length));
-  constant c_ctrl_bit     : natural := t_wishbone_address'length - g_adr_bits_hi;
-  constant c_rw_bit       : natural := t_wishbone_address'length - g_adr_bits_hi+1;
+  constant c_dat_bit     : natural := t_wishbone_address'length - g_adr_bits_hi+1;
+  constant c_rw_bit       : natural := t_wishbone_address'length - g_adr_bits_hi;
   
 begin
 -- instances:
@@ -157,8 +156,8 @@ begin
   --  |  Write  |
   --  |_________|   
 
-  s_slave_i.cyc <= slave_i.cyc and slave_i.adr(c_ctrl_bit);
-  s_slave_i.we  <= not slave_i.adr(c_rw_bit); 
+  s_slave_i.cyc <= slave_i.cyc and slave_i.adr(c_dat_bit);
+  s_slave_i.we  <= slave_i.adr(c_rw_bit); 
   s_slave_i.adr <= s_adr_hi(s_adr_hi'left downto s_adr_hi'length-g_adr_bits_hi) & slave_i.adr(slave_i.adr'left-g_adr_bits_hi downto 0); 
 
   framer: eb_framer 
