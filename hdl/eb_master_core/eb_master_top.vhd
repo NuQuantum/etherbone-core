@@ -77,7 +77,7 @@ architecture rtl of eb_master_top is
   signal s_skip_stb       : std_logic;
   signal s_skip_stall     : std_logic;
   signal s_length         : unsigned(15 downto 0); -- of UDP in words
-
+  signal s_max_ops        : unsigned(15 downto 0); -- max eb ops count per packet
   signal s_slave_i        : t_wishbone_slave_in; 
 
   signal s_master_o       : t_wishbone_master_out;
@@ -161,7 +161,6 @@ begin
   s_slave_i.adr <= s_adr_hi(s_adr_hi'left downto s_adr_hi'length-g_adr_bits_hi) & slave_i.adr(slave_i.adr'left-g_adr_bits_hi downto 0); 
 
   framer: eb_framer 
-   generic map(g_mtu => 512)
    PORT MAP (
          
 		  clk_i           => clk_i,
@@ -172,6 +171,8 @@ begin
       master_o        => s_framer2narrow,
       master_i        => s_narrow2framer,
       tx_flush_o      => s_tx_flush, 
+      max_ops_i       => s_max_ops,
+      length_i        => s_length,
       cfg_rec_hdr_i		=> s_cfg_rec_hdr
 			);  
 

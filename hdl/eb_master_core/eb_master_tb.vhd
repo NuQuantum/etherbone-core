@@ -190,7 +190,7 @@ slave_stall <= master_i.stall;
 
         wb_send_test('1', 3, x"00000000", 4, '1', '0');  -- 3 wr                    
         
-        wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 wr 
+        wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 rd 
         
         wb_send_test('1', 5, x"00000000", 4, '1', '0');  -- 1 wr 
         wb_send_test('0', 1, x"00001100", 4, '0', '0');  -- 1 rd

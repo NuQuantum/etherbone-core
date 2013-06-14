@@ -57,7 +57,7 @@ port(
   his_ip_o    : out std_logic_vector(31 downto 0);
   his_port_o  : out std_logic_vector(15 downto 0); 
   length_o    : out unsigned(15 downto 0);
-  
+  max_ops_o   : out unsigned(15 downto 0);
   adr_hi_o    : out t_wishbone_address;
   eb_opt_o    : out t_rec_hdr);
 end eb_master_wb_if;
@@ -81,10 +81,10 @@ constant c_DST_MAC_HI   : t_r_adr := c_SRC_UDP_PORT +1; --rw    1C
 constant c_DST_MAC_LO   : t_r_adr := c_DST_MAC_HI   +1; --rw    20
 constant c_DST_IPV4     : t_r_adr := c_DST_MAC_LO   +1; --rw    24
 constant c_DST_UDP_PORT : t_r_adr := c_DST_IPV4     +1; --rw    28
-constant c_MTU          : t_r_adr := c_DST_UDP_PORT +1; --rw    2C
-constant c_OPA_HI       : t_r_adr := c_MTU          +1; --rw    30
-constant c_OPA_MSK      : t_r_adr := c_OPA_HI       +1; --rw    34
-constant c_WOA_BASE     : t_r_adr := c_OPA_MSK      +1; --ro    38
+constant c_PAC_LEN      : t_r_adr := c_DST_UDP_PORT +1; --rw    2C
+constant c_OPA_HI       : t_r_adr := c_PAC_LEN          +1; --rw    30
+constant c_OPS_MAX      : t_r_adr := c_OPA_HI       +1; --rw    34
+constant c_WOA_BASE     : t_r_adr := c_OPS_MAX      +1; --ro    38
 constant c_ROA_BASE     : t_r_adr := c_WOA_BASE     +1; --ro    3C
 constant c_EB_OPT       : t_r_adr := c_ROA_BASE     +1; --rw    40
 constant c_LAST         : t_r_adr := c_EB_OPT; 
@@ -126,7 +126,8 @@ his_port_o  <= r_ctrl(c_DST_UDP_PORT)(his_port_o'left downto 0);
 my_mac_o    <= r_ctrl(c_SRC_MAC_HI) & r_ctrl(c_SRC_MAC_LO)(31 downto 16);
 my_ip_o     <= r_ctrl(c_SRC_IPV4);
 my_port_o   <= r_ctrl(c_SRC_UDP_PORT)(my_port_o'left downto 0);
-length_o    <= unsigned(r_ctrl(c_MTU)(length_o'left downto 0));
+max_ops_o   <= unsigned(r_ctrl(c_OPS_MAX)(max_ops_o'left downto 0));
+length_o    <= unsigned(r_ctrl(c_PAC_LEN)(length_o'left downto 0));
 adr_hi_o    <= r_ctrl(c_OPA_HI);
 eb_opt_o    <= f_parse_rec(r_ctrl(c_EB_OPT));
 
@@ -158,11 +159,11 @@ begin
 	    slave_dat_o  <= (others => '0');
 	    r_rst_n      <= '0';
 	    --set everything except MTU to zero
-	    for I in c_STATUS to c_MTU-1 loop
+	    for I in c_STATUS to c_PAC_LEN-1 loop
 	      r_ctrl(I) <= (others => '0');
 	    end loop;
-	    r_ctrl(c_MTU) <= t_wishbone_data(to_unsigned(512, 32));
-	    for I in c_MTU+1 to c_LAST loop
+	    r_ctrl(c_PAC_LEN) <= t_wishbone_data(to_unsigned(512, 32));
+	    for I in c_PAC_LEN+1 to c_LAST loop
 	      r_ctrl(I) <= (others => '0');
 	    end loop;
 	  else  
@@ -189,9 +190,9 @@ begin
             when c_DST_MAC_LO     => wr(v_adr,  x"FFFF0000");
             when c_DST_IPV4       => wr(v_adr);
             when c_DST_UDP_PORT   => wr(v_adr,  x"0000FFFF");
-            when c_MTU            => wr(v_adr,  x"000000FF"); 
+            when c_PAC_LEN        => wr(v_adr,  x"000000FF"); 
             when c_OPA_HI         => wr(v_adr, c_adr_mask);
-            when c_OPA_MSK        => wr(v_adr); 
+            when c_OPS_MAX        => wr(v_adr); 
             when c_EB_OPT         => wr(v_adr,  x"0000FFFF");
             when others           => r_err <= '1';
           end case;
@@ -207,9 +208,9 @@ begin
             when c_DST_MAC_LO     => rd(v_adr);
             when c_DST_IPV4       => rd(v_adr);
             when c_DST_UDP_PORT   => rd(v_adr);
-            when c_MTU            => rd(v_adr); 
+            when c_PAC_LEN        => rd(v_adr); 
             when c_OPA_HI         => rd(v_adr);
-            when c_OPA_MSK        => rd(v_adr); 
+            when c_OPS_MAX        => rd(v_adr); 
             when c_WOA_BASE       => rd(v_adr);
             when c_ROA_BASE       => rd(v_adr);
             when c_EB_OPT         => rd(v_adr);

@@ -35,7 +35,6 @@ use work.eb_hdr_pkg.all;
 use work.etherbone_pkg.all;
 
 entity eb_record_gen is
-generic(g_mtu : natural := 32);
   port(
     clk_i           : in  std_logic;            -- WB Clock
     rst_n_i         : in  std_logic;            -- async reset
@@ -48,7 +47,7 @@ generic(g_mtu : natural := 32);
 		rec_adr_rd_o    : out t_wishbone_data;      -- EB write base address
 		rec_adr_wr_o    : out t_wishbone_address;   -- EB read back address
     rec_ack_i       : in std_logic;             -- full flag from op fifo
-   
+    max_ops_i       : in unsigned(15 downto 0); 
     cfg_rec_hdr_i   : t_rec_hdr -- EB cfg information, eg read from cfg space etc
 
 );   
@@ -259,7 +258,7 @@ begin
       r_mode      <= UNKNOWN;
       r_wb_pop    <= '0';
     elsif rising_edge(clk_i) then
-      v_mtu_reached := (r_rec_hdr.wr_cnt + r_rec_hdr.rd_cnt >= g_mtu);      
+      v_mtu_reached := (r_rec_hdr.wr_cnt + r_rec_hdr.rd_cnt >= max_ops_i);      
       v_state       := r_hdr_state;                    
       r_push_hdr    <= '0';
       r_wb_pop      <= '0';

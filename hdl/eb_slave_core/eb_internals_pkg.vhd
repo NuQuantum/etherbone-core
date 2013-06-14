@@ -331,15 +331,14 @@ port(
   his_ip_o    : out std_logic_vector(31 downto 0);
   his_port_o  : out std_logic_vector(15 downto 0); 
   length_o    : out unsigned(15 downto 0);
-  
+  max_ops_o   : out unsigned(15 downto 0);
   adr_hi_o    : out t_wishbone_address;
   eb_opt_o    : out t_rec_hdr);
   end component;
   
   
   component eb_framer is
-  generic(g_mtu : natural := 32);
-    port(
+  port(
       clk_i           : in  std_logic;            
       rst_n_i         : in  std_logic;           
 
@@ -350,11 +349,12 @@ port(
       master_o        : out t_wishbone_master_out;
       master_i        : in  t_wishbone_master_in; 
       tx_flush_o      : out std_logic;
+      max_ops_i       : in unsigned(15 downto 0);
+      length_i        : in unsigned(15 downto 0); 
       cfg_rec_hdr_i   : in t_rec_hdr);   
   end component;
   
   component eb_record_gen is
-    generic(g_mtu : natural := 32);
     port(
       clk_i           : in  std_logic;            
       rst_n_i         : in  std_logic;            
@@ -367,7 +367,7 @@ port(
 		  rec_adr_rd_o    : out t_wishbone_data; 
 		  rec_adr_wr_o    : out t_wishbone_address; 
       rec_ack_i       : in std_logic;             
-     
+      max_ops_i       : in unsigned(15 downto 0); 
       cfg_rec_hdr_i   : in t_rec_hdr);   
   end component ;
   
