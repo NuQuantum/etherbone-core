@@ -273,7 +273,7 @@ begin
         
         when s_WA     =>  if(master_i.stall = '0') then
                             r_cnt_ops    <= '0' & rec_hdr.wr_cnt -2; -- output write base address
-                            op_pop    <= '1';
+                            --op_pop    <= '1';
                             v_state    := s_WRITE;
                             r_global_word_cnt <= r_global_word_cnt + 2;
                           end if;               
@@ -294,7 +294,7 @@ begin
         
         when s_RA     =>  if(master_i.stall = '0') then
                             r_cnt_ops    <= '0' & rec_hdr.rd_cnt -2; -- output readback address
-                            op_pop    <= '1';
+                            --op_pop    <= '1';
                             v_state    := s_READ;
                             r_global_word_cnt <= r_global_word_cnt + 2;
                           end if;  

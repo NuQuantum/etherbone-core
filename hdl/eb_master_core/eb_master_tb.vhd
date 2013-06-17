@@ -53,10 +53,10 @@ constant c_DST_MAC_HI   : unsigned(31 downto 0) := c_SRC_UDP_PORT +4; --rw    1C
 constant c_DST_MAC_LO   : unsigned(31 downto 0) := c_DST_MAC_HI   +4; --rw    20
 constant c_DST_IPV4     : unsigned(31 downto 0) := c_DST_MAC_LO   +4; --rw    24
 constant c_DST_UDP_PORT : unsigned(31 downto 0) := c_DST_IPV4     +4; --rw    28
-constant c_MTU          : unsigned(31 downto 0) := c_DST_UDP_PORT +4; --rw    2C
-constant c_OPA_HI       : unsigned(31 downto 0) := c_MTU          +4; --rw    30
-constant c_OPA_MSK      : unsigned(31 downto 0) := c_OPA_HI       +4; --rw    34
-constant c_WOA_BASE     : unsigned(31 downto 0) := c_OPA_MSK      +4; --ro    38
+constant c_PAC_LEN      : unsigned(31 downto 0) := c_DST_UDP_PORT +4; --rw    2C
+constant c_OPA_HI       : unsigned(31 downto 0) := c_PAC_LEN      +4; --rw    30
+constant c_OPS_MAX      : unsigned(31 downto 0) := c_OPA_HI       +4; --rw    34
+constant c_WOA_BASE     : unsigned(31 downto 0) := c_OPS_MAX      +4; --ro    38
 constant c_ROA_BASE     : unsigned(31 downto 0) := c_WOA_BASE     +4; --ro    3C
 constant c_EB_OPT       : unsigned(31 downto 0) := c_ROA_BASE     +4; --rw    40
 
@@ -184,29 +184,34 @@ slave_stall <= master_i.stall;
         wb_wr(c_DST_MAC_LO,   x"55660000");
         wb_wr(c_DST_IPV4,     x"C0A80064");
         wb_wr(c_DST_UDP_PORT, x"0000EBD1");
-        wb_wr(c_MTU,          x"00000020");
+        wb_wr(c_OPS_MAX,      x"00000010");
+        wb_wr(c_PAC_LEN,      x"00000050");
         wb_wr(c_OPA_HI,       x"F1230000");
         wb_wr(c_EB_OPT,       x"00000000");
 
-        wb_send_test('1', 3, x"00000000", 4, '1', '0');  -- 3 wr                    
+        --          hold  ops   offs  adr_inc we  send
+        wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 3 wr                    
         
-        wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 rd 
+        wb_send_test('0', 1, x"00000000", 4, '1', '1');  -- 3 wr   
         
-        wb_send_test('1', 5, x"00000000", 4, '1', '0');  -- 1 wr 
-        wb_send_test('0', 1, x"00001100", 4, '0', '0');  -- 1 rd
         
-        wb_send_test('1', 1, x"00000000", 4, '1', '0');  -- 1 wr 
-        wb_send_test('0', 1, x"00001000", 4, '0', '1');  -- 1 rd
+        --wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 rd 
         
-        wb_send_test('1', 1, x"00001000", 4, '1', '0');  -- 1 wr 
-        wb_send_test('0', 2, x"00001000", 4, '0', '0');  -- 1 rd
+        --wb_send_test('1', 5, x"00000000", 4, '1', '0');  -- 1 wr 
+        --wb_send_test('0', 1, x"00001100", 4, '0', '0');  -- 1 rd
         
-        wb_send_test('1', 10, x"00000000", 0, '0', '0');  -- 10 rd
-        wb_send_test('0', 10, x"00000000", 4, '0', '0');  -- 10 rd
-        wb_send_test('1', 1, x"00000010", 0, '0', '0');  -- 1 rd
-        wb_send_test('1', 1, x"00000020", 0, '0', '0');  -- 1 rd
-        wb_send_test('1', 1, x"00000030", 0, '0', '0');  -- 1 rd
-        wb_send_test('0', 1, x"00000040", 0, '0', '1');  -- 1 rd
+        --wb_send_test('1', 1, x"00000000", 4, '1', '0');  -- 1 wr 
+        --wb_send_test('0', 1, x"00001000", 4, '0', '1');  -- 1 rd
+        
+        --wb_send_test('1', 1, x"00001000", 4, '1', '0');  -- 1 wr 
+        ---wb_send_test('0', 2, x"00001000", 4, '0', '0');  -- 1 rd
+        
+        --wb_send_test('1', 10, x"00000000", 0, '0', '0');  -- 10 rd
+        --wb_send_test('0', 10, x"00000000", 4, '0', '0');  -- 10 rd
+        --wb_send_test('1', 1, x"00000010", 0, '0', '0');  -- 1 rd
+        ---wb_send_test('1', 1, x"00000020", 0, '0', '0');  -- 1 rd
+        --wb_send_test('1', 1, x"00000030", 0, '0', '0');  -- 1 rd
+        --wb_send_test('0', 1, x"00000040", 0, '0', '1');  -- 1 rd
          
         wait;
   end process;

@@ -115,6 +115,7 @@ signal r_adr_wr       : std_logic_vector(c_wishbone_address_width-1 downto 0);
 signal r_adr_rd       : std_logic_vector(c_wishbone_address_width-1 downto 0);
 signal r_rec_hdr      : t_rec_hdr;
 signal r_push_hdr     : std_logic;
+signal r_rec_valid    : std_logic;
 
 -- FSMs
 type t_mode is (UNKNOWN, WR_FIFO, WR_NORM, RD_FIFO, RD_NORM, WR_SPLIT, RD_SPLIT);
@@ -155,7 +156,7 @@ begin
   r_stall <= wb_fifo_full or r_drop;
   slave_stall_o <= r_stall;
 
-   
+  rec_valid_o <= r_rec_valid; 
 ------------------------------------------------------------------------------
 -- Input fifo
 ------------------------------------------------------------------------------
@@ -186,11 +187,12 @@ begin
     if rst_n_i = '0' then
       r_dat <= (others => '0'); 
       r_adr <= (others => '0');
-      r_drop <= '0';  
+      r_drop <= '0';
+ 
     elsif rising_edge(clk_i) then
       --let the buffer empty before starting new cycle
       r_cyc <= cyc;
-      rec_valid_o   <= r_push_hdr;
+      
       
       if(r_push_hdr = '1') then -- the 'if' is not necessary but makes debugging easier
         rec_hdr_o     <= r_rec_hdr;
@@ -260,6 +262,7 @@ begin
     elsif rising_edge(clk_i) then
       v_mtu_reached := (r_rec_hdr.wr_cnt + r_rec_hdr.rd_cnt >= max_ops_i);      
       v_state       := r_hdr_state;                    
+      r_rec_valid   <= '0';
       r_push_hdr    <= '0';
       r_wb_pop      <= '0';
       
@@ -406,6 +409,10 @@ begin
       
       if(v_state = s_OUTP) then
         r_push_hdr <= '1';
+      end if;
+      
+      if(v_state = s_WACK) then
+        r_rec_valid <= '1';
       end if;
                                         
       r_hdr_state <= v_state;
