@@ -45,7 +45,6 @@ port(
 
   slave_i       : in  t_wishbone_slave_in;
   slave_o       : out t_wishbone_slave_out;
-  tx_send_now_i : in std_logic;
   
   src_i         : in  t_wrf_source_in;
   src_o         : out t_wrf_source_out
@@ -64,7 +63,7 @@ architecture rtl of eb_master_top is
   signal s_stall          : std_logic;
   signal s_rst_n          : std_logic;
   signal wb_rst_n         : std_logic;
-
+  signal s_tx_send_now    : std_logic;
    
   signal s_his_mac,  s_my_mac  : std_logic_vector(47 downto 0);
   signal s_his_ip,   s_my_ip   : std_logic_vector(31 downto 0);
@@ -119,7 +118,7 @@ begin
   rst_n_i     => rst_n_i,
 
   wb_rst_n_o  => wb_rst_n,
-  flush_o     => open,
+  flush_o     => s_tx_send_now,
 
   slave_i     => slave_i,
   slave_dat_o => s_dat,
@@ -167,7 +166,7 @@ begin
 		  rst_n_i         => s_rst_n,
       slave_i  			  => s_slave_i,
 			slave_stall_o	  => s_stall,
-			tx_send_now_i   => tx_send_now_i,
+			tx_send_now_i   => s_tx_send_now,
       master_o        => s_framer2narrow,
       master_i        => s_narrow2framer,
       tx_flush_o      => s_tx_flush, 

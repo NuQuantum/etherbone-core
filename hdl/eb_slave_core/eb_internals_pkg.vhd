@@ -304,7 +304,7 @@ package eb_internals_pkg is
 
       slave_i     : in  t_wishbone_slave_in;
       slave_o     : out t_wishbone_slave_out;
-      tx_send_now_i : in  std_logic;
+      
       src_i       : in  t_wrf_source_in;
       src_o       : out t_wrf_source_out);
   end component ;

@@ -122,6 +122,18 @@ begin
   return unsigned(ret);
 end function to_unsigned;
 
+function or_all(slv_in : std_logic_vector)
+return std_logic is
+variable I : natural;
+variable ret : std_logic;
+begin
+  ret := '0';
+  for I in 0 to slv_in'left loop
+	ret := ret or slv_in(I);
+  end loop; 	
+  return ret;
+end function or_all;
+
 begin
 ------------------------------------------------------------------------------
 -- IO assignments
@@ -189,9 +201,11 @@ begin
               else adr;
               
   ctrl_fifo_d(0) <= tx_send_now_i;
-  eopmux : with r_mux_state select
-  eop <= '0'              when s_IDLE,
-          ctrl_fifo_q(0)  when others;
+  --eopmux : with r_mux_state select
+  --eop <= '0'              when s_IDLE,
+  --        ctrl_fifo_q(0)  when others;
+  
+  eop <= tx_send_now_i;
   
   master_o.cyc <= tx_cyc;
   master_o.we <= '0';
@@ -243,8 +257,8 @@ begin
                               r_max_ops_left    <= max_ops_i;
                               v_state           := s_EB;
                             else
-                              r_max_ops_left <= r_max_ops_left - (1 + to_unsigned(or rec_hdr.rd_cnt, 16)
-                                                                    + to_unsigned(or rec_hdr.wr_cnt, 16) 
+                              r_max_ops_left <= r_max_ops_left - (1 + to_unsigned(or_all(std_logic_vector(rec_hdr.rd_cnt)), 16)
+                                                                    + to_unsigned(or_all(std_logic_vector(rec_hdr.wr_cnt)), 16) 
                                                                     + rec_hdr.rd_cnt  
                                                                     + rec_hdr.wr_cnt);
                               v_state       := s_REC;

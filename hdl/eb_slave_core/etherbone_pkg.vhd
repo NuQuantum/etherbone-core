@@ -23,6 +23,22 @@ package etherbone_pkg is
     date          => x"20130211",
     name          => "Etherbone-Config   ")));
   
+  constant c_ebm_sdb : t_sdb_device := (
+    abi_class     => x"0000", -- undocumented device
+    abi_ver_major => x"01",
+    abi_ver_minor => x"01",
+    wbd_endian    => c_sdb_endian_big,
+    wbd_width     => x"7", -- 8/16/32-bit port granularity
+    sdb_component => (
+    addr_first    => x"0000000000000000",
+    addr_last     => x"00000000001fffff",
+    product => (
+    vendor_id     => x"0000000000000651", -- GSI
+    device_id     => x"00000815",
+    version       => x"00000001",
+    date          => x"20130615",
+    name          => "ETHERBONE_MASTER   ")));
+  
   component eb_raw_slave is
     generic(
       g_sdb_address    : std_logic_vector(63 downto 0);
@@ -77,5 +93,20 @@ package etherbone_pkg is
       master_o    : out t_wishbone_master_out;
       master_i    : in  t_wishbone_master_in);
   end component;
+  
+  component eb_master_top is
+generic(g_adr_bits_hi : natural := 8;
+        g_mtu : natural := 32);
+port(
+  clk_i         : in  std_logic;
+  rst_n_i       : in  std_logic;
+
+  slave_i       : in  t_wishbone_slave_in;
+  slave_o       : out t_wishbone_slave_out;
+  
+  src_i         : in  t_wrf_source_in;
+  src_o         : out t_wrf_source_out
+);
+end component;
 
 end etherbone_pkg;

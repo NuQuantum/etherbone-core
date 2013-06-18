@@ -79,8 +79,7 @@ uut: eb_master_top
 
 		  slave_i  			  => master_o,
 			slave_o         =>  master_i,
-      tx_send_now_i   => eop, 
-
+     
       src_o           => src_o,
       src_i           => src_i
 			);    
@@ -146,11 +145,7 @@ slave_stall <= master_i.stall;
       tadr(32-c_adr_hi_bits) := we;
       master_o.adr  <= std_logic_vector(offs + tadr + to_unsigned(I*adr_inc, 32));
       master_o.dat  <= x"DEAD" & std_logic_vector(to_unsigned(I*adr_inc, 16));
-      if(I = ops -1) then
-        eop <= send;
-      else
-        eop <= '0';
-      end if;
+      
       wait for clk_period; 
       
       while slave_stall = '1'loop
@@ -158,8 +153,23 @@ slave_stall <= master_i.stall;
       end loop;
         
     end loop;
-    master_o.stb <= '0';
-    master_o.cyc <= '0' or hold;  
+    
+    if(hold = '1') then
+      master_o.cyc <= '1';
+      master_o.stb <= '0';  
+    else
+      master_o.stb  <= '1';
+      master_o.we   <= '1';
+      tadr(32-c_adr_hi_bits+1) := '0'; 
+      master_o.adr  <= std_logic_vector(tadr + c_FLUSH);
+      master_o.dat  <= x"00000001";
+      wait for clk_period; 
+      while slave_stall = '1'loop
+        wait for clk_period; 
+      end loop;
+      master_o.cyc <= '0';
+      master_o.stb <= '0'; 
+    end if;
     wait for clk_period;    
   end procedure wb_send_test;
   
@@ -191,10 +201,9 @@ slave_stall <= master_i.stall;
 
         --          hold  ops   offs  adr_inc we  send
         wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 3 wr                    
-        
+
         wb_send_test('0', 1, x"00000000", 4, '1', '1');  -- 3 wr   
-        
-        
+
         --wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 rd 
         
         --wb_send_test('1', 5, x"00000000", 4, '1', '0');  -- 1 wr 
