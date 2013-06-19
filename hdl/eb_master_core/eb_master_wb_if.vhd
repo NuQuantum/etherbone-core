@@ -180,8 +180,8 @@ begin
       if(slave_i.adr(32-g_adr_bits_hi+1) = '0') then
         if(slave_i.we = '1') then
           case v_adr is
-            when c_RESET          => r_rst_n <= '0';
-            when c_FLUSH          => r_flush <= '1';
+            when c_RESET          => r_rst_n <= '0'; r_ack       <= '1'; 
+            when c_FLUSH          => r_flush <= '1'; r_ack       <= '1'; 
             when c_SRC_MAC_HI     => wr(v_adr);
             when c_SRC_MAC_LO     => wr(v_adr,  x"FFFF0000");
             when c_SRC_IPV4       => wr(v_adr);
@@ -221,11 +221,12 @@ begin
       else
         if(slave_i.we = '1') then
           -- check if the core is configured
-          if( (r_ctrl(c_STATUS) and c_STAT_CONFIGURED) = c_STAT_CONFIGURED) then 
-            null; -- valid access to the framer. we dont need to do anything about that here
-          else
-            r_err <= '1'; --give back an error, the eth/udp/ip info is bad
-          end if;
+          --if( (r_ctrl(c_STATUS) and c_STAT_CONFIGURED) = c_STAT_CONFIGURED) then 
+          --  null; -- valid access to the framer. we dont need to do anything about that here
+          --else
+          --  r_err <= '1'; --give back an error, the eth/udp/ip info is bad
+          --end if;
+          r_ack       <= '1';
         else
           r_err <= '1'; -- a read on the framer ?! That's forbidden, give the user a scolding
         end if;

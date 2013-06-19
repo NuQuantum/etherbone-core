@@ -60,7 +60,7 @@ constant c_WOA_BASE     : unsigned(31 downto 0) := c_OPS_MAX      +4; --ro    38
 constant c_ROA_BASE     : unsigned(31 downto 0) := c_WOA_BASE     +4; --ro    3C
 constant c_EB_OPT       : unsigned(31 downto 0) := c_ROA_BASE     +4; --rw    40
 
-constant c_adr_hi_bits : natural := 4;
+constant c_adr_hi_bits : natural := 13;
 
 
 	
@@ -196,13 +196,13 @@ slave_stall <= master_i.stall;
         wb_wr(c_DST_UDP_PORT, x"0000EBD1");
         wb_wr(c_OPS_MAX,      x"00000010");
         wb_wr(c_PAC_LEN,      x"00000050");
-        wb_wr(c_OPA_HI,       x"F1230000");
+        wb_wr(c_OPA_HI,       x"00000000");
         wb_wr(c_EB_OPT,       x"00000000");
 
         --          hold  ops   offs  adr_inc we  send
-        wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 3 wr                    
+        wb_send_test('0', 1, x"00200000", 4, '0', '1');  -- 3 wr                    
 
-        wb_send_test('0', 1, x"00000000", 4, '1', '1');  -- 3 wr   
+        wb_send_test('0', 1, x"00200000", 4, '1', '1');  -- 3 wr   
 
         --wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 rd 
         
