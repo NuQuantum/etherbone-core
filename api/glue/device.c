@@ -364,6 +364,9 @@ eb_socket_t eb_device_socket(eb_device_t devicep) {
 eb_status_t eb_device_read(eb_device_t devicep, eb_address_t address, eb_format_t format, eb_data_t* data, eb_user_data_t user_data, eb_callback_t cb) {
   eb_status_t out;
   eb_cycle_t cycle;
+
+  /* hack for labview */
+  if (!cb) cb = eb_block;
   
   out = eb_cycle_open(devicep, user_data, cb, &cycle);
   if (out != EB_OK) return out;
@@ -377,6 +380,9 @@ eb_status_t eb_device_write(eb_device_t devicep, eb_address_t address, eb_format
   eb_status_t out;
   eb_cycle_t cycle;
   
+  /* hack for labview */
+  if (!cb) cb = eb_block;
+
   out = eb_cycle_open(devicep, user_data, cb, &cycle);
   if (out != EB_OK) return out;
   
