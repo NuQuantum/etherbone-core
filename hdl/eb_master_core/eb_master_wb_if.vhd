@@ -106,7 +106,7 @@ signal r_busy   : std_logic;
 signal r_eb_sent : std_logic;
 constant c_adr_mask : std_logic_vector(31 downto 0) := not std_logic_vector(to_unsigned(2**(32-g_adr_bits_hi+1)-1, 32));
 
-
+constant c_dat_bit : natural := 31-g_adr_bits_hi+2;
 
 begin
 
@@ -177,7 +177,8 @@ begin
     
     if(push = '1') then
       --CTRL REGISTERS
-      if(slave_i.adr(32-g_adr_bits_hi+1) = '0') then
+      if(slave_i.adr(c_dat_bit) = '0') then
+        report "c_dat0";
         if(slave_i.we = '1') then
           case v_adr is
             when c_RESET          => r_rst_n <= '0'; r_ack       <= '1'; 
@@ -194,7 +195,8 @@ begin
             when c_OPA_HI         => wr(v_adr, c_adr_mask);
             when c_OPS_MAX        => wr(v_adr); 
             when c_EB_OPT         => wr(v_adr,  x"0000FFFF");
-            when others           => r_err <= '1';
+            when others           => report "write to adr in cmd space not mapped";
+                                      r_err <= '1';
           end case;
         
         else  
@@ -214,7 +216,8 @@ begin
             when c_WOA_BASE       => rd(v_adr);
             when c_ROA_BASE       => rd(v_adr);
             when c_EB_OPT         => rd(v_adr);
-            when others           => r_err <= '1';
+            when others           => report "read to adr in cmd space not mapped";
+                                      r_err <= '1';
           end case;    
         end if;
       --STAGING AREA   
@@ -228,12 +231,9 @@ begin
           --end if;
           r_ack       <= '1';
         else
+          
           r_err <= '1'; -- a read on the framer ?! That's forbidden, give the user a scolding
         end if;
-        
-      --BAD/UNMAPPED ADR
-    
-        r_err <= '1';
       end if;
     end if;
   end if;

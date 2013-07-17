@@ -58,9 +58,12 @@ architecture rtl of eb_framer is
 --signals
 signal ctrl_fifo_q    : std_logic_vector(0 downto 0);
 signal ctrl_fifo_d    : std_logic_vector(0 downto 0);
+signal ctrl_fifo_empty : std_logic;
+signal send_now : std_logic;
 
-signal eop            : std_logic;
-signal r_eop          : std_logic;
+signal tx_stb      : std_logic;
+signal pop_state      : std_logic;
+signal r_init    : std_logic;
 
 signal op_fifo_q      : std_logic_vector(31 downto 0);
 signal op_fifo_d      : std_logic_vector(31 downto 0);
@@ -83,19 +86,20 @@ signal adr_wr         : t_wishbone_address;
 signal adr_rd         : t_wishbone_address;
 signal rec_hdr        : t_rec_hdr;
 signal rec_valid      : std_logic;
-signal op_pop         : std_logic;
+signal op_aux1, op_aux2, op_pop          : std_logic;
 signal r_first_rec    : std_logic;
 signal r_eb_hdr       : t_eb_hdr;
 
 -- FSMs
-type t_mux_state is (s_IDLE, s_EB, s_REC, s_WA, s_RA, s_WRITE, s_READ, s_DONE, s_PAD);
+type t_mux_state is (s_INIT, s_IDLE, s_EB, s_REC, s_WA, s_RA, s_WRITE, s_READ, s_DONE, s_PAD);
 signal r_mux_state    : t_mux_state;
 signal r_cnt_ops     : unsigned(8 downto 0);
 signal r_cnt_pad      : unsigned(16 downto 0);
 signal r_max_ops_left : unsigned(15 downto 0);
-signal r_global_word_cnt : unsigned(15 downto 0);
-signal r_length : unsigned(15 downto 0);
+signal r_byte_cnt : unsigned(16 downto 0);
+signal r_length : unsigned(16 downto 0);
 
+signal s_recgen_slave_i  : t_wishbone_slave_in;
 
 function f_parse_rec(x : std_logic_vector) return t_rec_hdr is
     variable o : t_rec_hdr;
@@ -146,13 +150,20 @@ begin
 
   slave_stall_o <= r_stall;
 
+  s_recgen_slave_i.cyc  <= cyc and not tx_send_now_i;
+  s_recgen_slave_i.stb  <= stb;
+  s_recgen_slave_i.we   <= we;
+  s_recgen_slave_i.sel  <= slave_i.sel;
+  s_recgen_slave_i.adr  <= adr;
+  s_recgen_slave_i.dat  <= dat;
+ 
   rgen: eb_record_gen 
   PORT MAP (
          
       clk_i           => clk_i,
       rst_n_i         => rst_n_i,
 
-      slave_i         => slave_i,
+      slave_i         => s_recgen_slave_i,
       slave_stall_o   => r_stall,
       rec_ack_i       => r_rec_ack,
       
@@ -190,24 +201,23 @@ begin
       w_full_o  => open,
       w_push_i  => op_fifo_push,
       w_dat_i   => ctrl_fifo_d,
-      r_empty_o => open,
+      r_empty_o => ctrl_fifo_empty,
       r_pop_i   => op_fifo_pop,
       r_dat_o   => ctrl_fifo_q);
        
-
-  op_fifo_pop   <= op_pop and not op_fifo_empty;
-  op_fifo_push  <= cyc and stb and not r_stall;
-  op_fifo_d <= dat when we = '1'
+  
+  
+  op_fifo_pop   <= ((pop_state and (tx_stb and not master_i.stall)) or op_pop) and not op_fifo_empty;
+  op_fifo_push  <= (cyc and stb and not r_stall);
+  op_fifo_d     <= dat when we = '1'
               else adr;
               
   ctrl_fifo_d(0) <= tx_send_now_i;
-  --eopmux : with r_mux_state select
-  --eop <= '0'              when s_IDLE,
-  --        ctrl_fifo_q(0)  when others;
-  
-  eop <= tx_send_now_i;
+  send_now      <= ctrL_fifo_q(0) when ctrl_fifo_empty = '0'
+              else '0';
   
   master_o.cyc <= tx_cyc;
+  master_o.stb <= tx_stb;
   master_o.we <= '0';
   master_o.sel <= (others => '1');
   master_o.adr <= (others => '0');
@@ -224,143 +234,150 @@ begin
 
       r_eb_hdr              <= c_eb_init;
 
-  p_eb_mux : process (clk_i, rst_n_i) is
+  p_eb_mux : process (clk_i) is
   variable v_state        : t_mux_state;
  
   begin
-    if rst_n_i = '0' then
-      r_mux_state           <= s_IDLE;
-
-      --r_eb_hdr.no_response  <= '0';
-      tx_cyc  <= '0';
-      r_first_rec   <= '1';
-      r_eop         <= '0'; 
-    elsif rising_edge(clk_i) then
-
-      v_state       := r_mux_state;                    
-      op_pop        <= '0';
-      master_o.stb  <= '0';
-      r_rec_ack     <= '0';
-      tx_flush_o    <= '0';
-      r_first_rec   <= r_first_rec  or eop;
-      r_eop         <= r_eop        or eop; --(tx_send_now_i or eop);
-      
-      
-      case r_mux_state is
-        when s_IDLE   =>  if(rec_valid = '1') then
-                           if(r_first_rec = '1') then
-                              tx_cyc            <= '1';
-                              tx_flush_o        <= '1';
-                              r_first_rec       <= '0';
-                              r_length          <= length_i;
-                              r_global_word_cnt <= (others => '0');
-                              r_max_ops_left    <= max_ops_i;
-                              v_state           := s_EB;
-                            else
-                              r_max_ops_left <= r_max_ops_left - (1 + to_unsigned(or_all(std_logic_vector(rec_hdr.rd_cnt)), 16)
-                                                                    + to_unsigned(or_all(std_logic_vector(rec_hdr.wr_cnt)), 16) 
-                                                                    + rec_hdr.rd_cnt  
-                                                                    + rec_hdr.wr_cnt);
-                              v_state       := s_REC;
-                            end if;
-                          end if;
-                          
-        when s_EB     =>  if(master_i.stall = '0') then
-                            v_state    := s_REC; -- output EB hdr
-                            r_global_word_cnt <= r_global_word_cnt + 2;                         
-                          end if;
-                          
-        when s_REC    =>  if(master_i.stall = '0') then
-                            if(rec_hdr.wr_cnt + rec_hdr.rd_cnt /= 0) then -- output record hdr
-                              if(rec_hdr.wr_cnt /= 0) then
-                                v_state    := s_WA;
+    if rising_edge(clk_i) then
+      if rst_n_i = '0' then
+        r_mux_state           <= s_IDLE;
+        tx_cyc  <= '0';
+        r_first_rec   <= '1';
+        op_pop <= '0';
+      else   
+        v_state       := r_mux_state;                    
+        tx_stb        <= '0';
+        r_rec_ack     <= '0';
+        tx_flush_o    <= '0';
+        pop_state     <= '0'; -- all states that can pop the opfifo
+        op_pop        <= '0';
+        r_init        <= '0'; 
+        
+        case r_mux_state is
+          when s_INIT   =>  v_state           := s_IDLE;
+          when s_IDLE   =>  if(send_now = '1') then
+                                v_state       := s_DONE;
+                             elsif(rec_valid = '1') then
+                             if(r_first_rec = '1') then
+                                tx_cyc            <= '1';
+                                tx_flush_o        <= '1';
+                                r_first_rec       <= '0';
+                                r_length          <= '0' & length_i;
+                                r_byte_cnt        <= to_unsigned(8, r_byte_cnt'length);
+                                r_max_ops_left    <= max_ops_i;
+                                v_state           := s_EB;
                               else
-                                v_state    := s_RA;
+                                r_max_ops_left <= r_max_ops_left - (1 + to_unsigned(or_all(std_logic_vector(rec_hdr.rd_cnt)), 16)
+                                                                      + to_unsigned(or_all(std_logic_vector(rec_hdr.wr_cnt)), 16) 
+                                                                      + rec_hdr.rd_cnt  
+                                                                      + rec_hdr.wr_cnt);
+                                v_state       := s_REC;
                               end if;
-                              
-                            else
-                              v_state    := s_DONE;
-                              
                             end if;
-                            r_global_word_cnt <= r_global_word_cnt + 2;
-                          end if;
-        
-        when s_WA     =>  if(master_i.stall = '0') then
-                            r_cnt_ops    <= '0' & rec_hdr.wr_cnt -2; -- output write base address
-                            --op_pop    <= '1';
-                            v_state    := s_WRITE;
-                            r_global_word_cnt <= r_global_word_cnt + 2;
-                          end if;               
-        
-        when s_WRITE  =>  if(master_i.stall = '0') then
-                            if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output write values
-                              if(rec_hdr.rd_cnt /= 0) then
-                                v_state := s_RA;
+                            
+          when s_EB     =>  if(master_i.stall = '0') then
+                              v_state    := s_REC; -- output EB hdr
+                              r_byte_cnt <= r_byte_cnt + 4;                         
+                            end if;
+                            
+          when s_REC    =>  if(master_i.stall = '0') then
+                              if(rec_hdr.wr_cnt + rec_hdr.rd_cnt /= 0) then -- output record hdr
+                                if(rec_hdr.wr_cnt /= 0) then
+                                  v_state    := s_WA;
+                                else
+                                  v_state    := s_RA;
+                                end if;
+                                
                               else
+                                v_state    := s_DONE;
+                                
+                              end if;
+                              r_byte_cnt <= r_byte_cnt + 4;
+                            end if;
+          
+          when s_WA     =>  if(master_i.stall = '0') then
+                              r_cnt_ops    <= '0' & rec_hdr.wr_cnt -2; -- output write base address
+                              v_state    := s_WRITE;
+                              r_byte_cnt <= r_byte_cnt + 4;
+                            end if;               
+          
+          when s_WRITE  =>  if(master_i.stall = '0') then
+                              r_cnt_ops <= r_cnt_ops-1;
+                              r_byte_cnt <= r_byte_cnt + 4;
+                                
+                              if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output write values
+                                if(rec_hdr.rd_cnt /= 0) then
+                                  v_state := s_RA;
+                                else
+                                  v_state := s_DONE;
+                                end if;
+                              end if;
+                            end if;
+          
+          when s_RA     =>  if(master_i.stall = '0') then
+                              r_cnt_ops    <= '0' & rec_hdr.rd_cnt -2; -- output readback address
+                              v_state    := s_READ;
+                              r_byte_cnt <= r_byte_cnt + 4;
+                            end if;  
+          
+          when s_READ   =>  if(master_i.stall = '0') then
+                              r_cnt_ops <= r_cnt_ops-1;
+                              r_byte_cnt <= r_byte_cnt + 4;
+                              
+                              if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output read addresses
                                 v_state := s_DONE;
                               end if;
-                            else
-                              op_pop    <= '1';
-                              r_cnt_ops <= r_cnt_ops-1;
-                              r_global_word_cnt <= r_global_word_cnt + 2;
                             end if;
-                          end if;
-        
-        when s_RA     =>  if(master_i.stall = '0') then
-                            r_cnt_ops    <= '0' & rec_hdr.rd_cnt -2; -- output readback address
-                            --op_pop    <= '1';
-                            v_state    := s_READ;
-                            r_global_word_cnt <= r_global_word_cnt + 2;
-                          end if;  
-        
-        when s_READ   =>  if(master_i.stall = '0') then
-                            if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output read addresses
-                              v_state := s_DONE;
+          
+          when s_DONE   =>  if(send_now = '1') then    
+                              r_first_rec   <= '1';
+                              op_pop        <= '1';
+                              -- if the packet is shorter than we specified for the header, we need to pad with empty eb records
+                              if( r_byte_cnt < r_length) then
+                                r_cnt_pad     <= (r_length - r_byte_cnt - 8); 
+                                v_state       := s_PAD;
+                              else
+                                tx_cyc        <= '0';
+                                v_state       := s_IDLE;
+                              end if;
                             else
-                              op_pop    <= '1';
-                              r_cnt_ops <= r_cnt_ops-1;
-                              r_global_word_cnt <= r_global_word_cnt + 2;
-                            end if;
-                          end if;
-        
-        when s_DONE   =>  if(r_eop = '1') then    
-                            -- if the packet is shorter than we specified for the header, we need to pad with empty eb records
-                            if( r_global_word_cnt < r_length) then
-                              r_cnt_pad     <= '0' & (r_length - r_global_word_cnt -2); 
-                              v_state       := s_PAD;
-                            else
-                              tx_cyc        <= not r_eop;
-                              r_eop         <= '0';
                               v_state       := s_IDLE;
                             end if;
-                          else
-                            v_state       := s_IDLE;
-                          end if;
-       
-        when s_PAD    =>  if(r_cnt_pad(r_cnt_pad'left) = '1') then -- output padding
-                              tx_cyc        <= not r_eop;
-                              r_eop         <= '0';
-                              v_state       := s_IDLE;
-                            else
-                              r_cnt_pad <= r_cnt_pad-2;
-                              r_global_word_cnt <= r_global_word_cnt + 2;
+         
+          when s_PAD    =>  if(master_i.stall = '0') then
+                                if(r_cnt_pad(r_cnt_pad'left) = '1') then -- output padding
+                                  tx_cyc        <= '0';
+                                  v_state       := s_IDLE;
+                                end if;
+                                r_cnt_pad <= r_cnt_pad-4;
+                                r_byte_cnt <= r_byte_cnt + 4;
                             end if;
+         
 
+          
+          
+          when others   =>  v_state := s_IDLE;
+        end case;
+      
+        -- flags on state transition
+        if((v_state /= s_IDLE) and (v_state /= s_DONE)) then
+          tx_stb   <= '1';
+        end if;
         
+        if((v_state = s_WRITE) or (v_state = s_READ)) then
+          pop_state   <= '1';
+        end if;
         
-        when others   =>  v_state := s_IDLE;
-      end case;
-    
-      -- flags on state transition
-      if((v_state /= s_IDLE) and (v_state /= s_DONE)) then
-        master_o.stb    <= '1';
+        if(v_state = s_DONE) then
+          r_rec_ack <= '1';
+        end if;
+        
+        if(v_state = s_INIT) then
+          r_init <= '1';
+        end if;
+                                          
+        r_mux_state <= v_state;
       end if;
-      if(v_state = s_DONE) then
-        r_rec_ack <= '1';
-      end if;
-                                        
-      r_mux_state <= v_state;
-    
     end if;
   end process;
 

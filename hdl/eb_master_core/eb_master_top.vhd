@@ -86,9 +86,9 @@ architecture rtl of eb_master_top is
   signal s_narrow2framer  : t_wishbone_master_in;
   signal s_narrow2tx      : t_wishbone_master_out;
   signal s_tx2narrow      : t_wishbone_master_in;
-  
-  constant c_dat_bit     : natural := t_wishbone_address'length - g_adr_bits_hi+1;
-  constant c_rw_bit       : natural := t_wishbone_address'length - g_adr_bits_hi;
+     
+  constant c_dat_bit : natural := t_wishbone_address'left - g_adr_bits_hi +2;
+  constant c_rw_bit  : natural := t_wishbone_address'left - g_adr_bits_hi +1;
   
 begin
 -- instances:
@@ -113,12 +113,13 @@ begin
   slave_o.rty   <= '0';
   
    wbif: eb_master_wb_if
+   generic map (g_adr_bits_hi => g_adr_bits_hi)
     PORT MAP (
   clk_i       => clk_i,
   rst_n_i     => rst_n_i,
 
   wb_rst_n_o  => wb_rst_n,
-  flush_o     => s_tx_send_now,
+  flush_o     => open,
 
   slave_i     => slave_i,
   slave_dat_o => s_dat,
@@ -133,7 +134,7 @@ begin
   his_ip_o    => s_his_ip,
   his_port_o  => s_his_port,
   length_o    => s_length,
-  
+  max_ops_o   => s_max_ops,
   adr_hi_o    => s_adr_hi,
   eb_opt_o    => s_cfg_rec_hdr
   );
@@ -155,7 +156,10 @@ begin
   --  |  Write  |
   --  |_________|   
 
-  s_slave_i.cyc <= slave_i.cyc and slave_i.adr(c_dat_bit);
+  s_tx_send_now         <= '1' when slave_i.adr(c_dat_bit) = '0' and slave_i.adr(7 downto 0) = x"04"
+              else '0';
+              
+  s_slave_i.cyc <= slave_i.cyc and (slave_i.adr(c_dat_bit)  or s_tx_send_now);
   s_slave_i.we  <= slave_i.adr(c_rw_bit); 
   s_slave_i.adr <= s_adr_hi(s_adr_hi'left downto s_adr_hi'length-g_adr_bits_hi) & slave_i.adr(slave_i.adr'left-g_adr_bits_hi downto 0); 
 

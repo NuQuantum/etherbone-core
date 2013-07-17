@@ -42,7 +42,7 @@ ARCHITECTURE behavior OF test_tb IS
 	signal eop	            : std_logic;
 	
 	
-constant c_RESET        : unsigned(31 downto 0) := x"00000000";
+constant c_RESET        : unsigned(31 downto 0) := x"00200000";
 constant c_FLUSH        : unsigned(31 downto 0) := c_RESET        +4; --wo    04
 constant c_STATUS       : unsigned(31 downto 0) := c_FLUSH        +4; --rw    08
 constant c_SRC_MAC_HI   : unsigned(31 downto 0) := c_STATUS       +4; --rw    0C
@@ -102,7 +102,8 @@ slave_stall <= master_i.stall;
   
   
    procedure wb_wr( adr : in unsigned(31 downto 0);
-                    dat : in std_logic_vector(31 downto 0)
+                    dat : in std_logic_vector(31 downto 0);
+                    hold : in std_logic 
                   ) is
   begin
     
@@ -117,7 +118,7 @@ slave_stall <= master_i.stall;
       wait for clk_period; 
     end loop;
     master_o.stb <= '0';
-    master_o.cyc <= '0';  
+    master_o.cyc <= hold;  
     wait for clk_period;    
   end procedure wb_wr;
   
@@ -186,42 +187,26 @@ slave_stall <= master_i.stall;
         rst_n <= '1';
         wait until rising_edge(clk);  
 
-        wb_wr(c_SRC_MAC_HI,   x"D15EA5ED");
-        wb_wr(c_SRC_MAC_LO,   x"BEEF0000");
-        wb_wr(c_SRC_IPV4,     x"CAFEBABE");
-        wb_wr(c_SRC_UDP_PORT, x"0000EBD0");
-        wb_wr(c_DST_MAC_HI,   x"11223344");
-        wb_wr(c_DST_MAC_LO,   x"55660000");
-        wb_wr(c_DST_IPV4,     x"C0A80064");
-        wb_wr(c_DST_UDP_PORT, x"0000EBD1");
-        wb_wr(c_OPS_MAX,      x"00000010");
-        wb_wr(c_PAC_LEN,      x"00000050");
-        wb_wr(c_OPA_HI,       x"00000000");
-        wb_wr(c_EB_OPT,       x"00000000");
+        wb_wr(c_SRC_MAC_HI,   x"D15EA5ED", '1');
+        wb_wr(c_SRC_MAC_LO,   x"BEEF0000", '1');
+        wb_wr(c_SRC_IPV4,     x"CAFEBABE", '1');
+        wb_wr(c_SRC_UDP_PORT, x"0000EBD0", '1');
+        wb_wr(c_DST_MAC_HI,   x"11223344", '1');
+        wb_wr(c_DST_MAC_LO,   x"55660000", '1');
+        wb_wr(c_DST_IPV4,     x"C0A80064", '1');
+        wb_wr(c_DST_UDP_PORT, x"0000EBD1", '1');
+        wb_wr(c_OPS_MAX,      x"00000010", '1');
+        wb_wr(c_PAC_LEN,      x"00000050", '1');
+        wb_wr(c_OPA_HI,       x"00000000", '1');
+        wb_wr(c_EB_OPT,       x"00000000", '0');
 
-        --          hold  ops   offs  adr_inc we  send
-        wb_send_test('0', 1, x"00200000", 4, '0', '1');  -- 3 wr                    
-
-        wb_send_test('0', 1, x"00200000", 4, '1', '1');  -- 3 wr   
-
-        --wb_send_test('0', 1, x"00000000", 4, '0', '1');  -- 1 rd 
-        
-        --wb_send_test('1', 5, x"00000000", 4, '1', '0');  -- 1 wr 
-        --wb_send_test('0', 1, x"00001100", 4, '0', '0');  -- 1 rd
-        
-        --wb_send_test('1', 1, x"00000000", 4, '1', '0');  -- 1 wr 
-        --wb_send_test('0', 1, x"00001000", 4, '0', '1');  -- 1 rd
-        
-        --wb_send_test('1', 1, x"00001000", 4, '1', '0');  -- 1 wr 
-        ---wb_send_test('0', 2, x"00001000", 4, '0', '0');  -- 1 rd
-        
-        --wb_send_test('1', 10, x"00000000", 0, '0', '0');  -- 10 rd
-        --wb_send_test('0', 10, x"00000000", 4, '0', '0');  -- 10 rd
-        --wb_send_test('1', 1, x"00000010", 0, '0', '0');  -- 1 rd
-        ---wb_send_test('1', 1, x"00000020", 0, '0', '0');  -- 1 rd
-        --wb_send_test('1', 1, x"00000030", 0, '0', '0');  -- 1 rd
-        --wb_send_test('0', 1, x"00000040", 0, '0', '1');  -- 1 rd
-         
+        wb_wr(x"00300000",    x"DEADBEE0", '0');
+        wb_wr(x"00300004",    x"DEADBEE1", '0');
+        wb_wr(x"00380008",    x"DEADBEE2", '0');
+        wb_wr(x"0030000C",    x"DEADBEE3", '0');
+        wb_wr(x"00300010",    x"DEADBEE4", '0');
+        wait for clk_period*500; 
+        wb_wr(c_FLUSH,       x"00000001",  '0');
         wait;
   end process;
 
