@@ -295,19 +295,7 @@ package eb_internals_pkg is
 -- EB Master Stuff
 ----------------------------------------------------------------- 
  
-  component eb_master_top is
-  generic(g_adr_bits_hi : natural := 8;
-        g_mtu : natural := 32);
-    port(
-      clk_i       : in  std_logic;
-      rst_n_i     : in  std_logic;
 
-      slave_i     : in  t_wishbone_slave_in;
-      slave_o     : out t_wishbone_slave_out;
-      
-      src_i       : in  t_wrf_source_in;
-      src_o       : out t_wrf_source_out);
-  end component ;
  
     component eb_master_wb_if is
     generic(g_adr_bits_hi : natural := 8);

@@ -57,6 +57,41 @@ package etherbone_pkg is
       master_i    : in  t_wishbone_master_in);
   end component;
 
+  component eb_master_slave_wrapper is
+  generic(
+    g_with_master         : boolean := false;
+    
+    g_ebs_sdb_address     : std_logic_vector(63 downto 0);
+    g_ebs_timeout_cycles  : natural := 6250000;
+    g_ebs_mtu             : natural := 1500;
+    
+    g_ebm_adr_bits_hi     : natural := 2;
+    g_ebm_size            : natural := 32
+    
+    );
+  port(
+    clk_i           : in  std_logic;
+    nRst_i          : in  std_logic;
+    
+    --to wr core, ext wrf if 
+    snk_i           : in  t_wrf_sink_in;
+    snk_o           : out t_wrf_sink_out;
+    src_o           : out t_wrf_source_out;
+    src_i           : in  t_wrf_source_in;
+  
+    --ebs
+    ebs_cfg_slave_o : out t_wishbone_slave_out;
+    ebs_cfg_slave_i : in  t_wishbone_slave_in;
+    ebs_wb_master_o : out t_wishbone_master_out;
+    ebs_wb_master_i : in  t_wishbone_master_in;
+    
+    --ebm (optional)
+    ebm_wb_slave_i  : in  t_wishbone_slave_in;
+    ebm_wb_slave_o  : out t_wishbone_slave_out 
+     
+  );
+  end component;
+  
   component eb_ethernet_slave is
     generic(
       g_sdb_address    : std_logic_vector(63 downto 0);
