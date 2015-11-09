@@ -43,6 +43,7 @@ port(
   slave_i     : in  t_wishbone_slave_in;
   slave_o     : out t_wishbone_slave_out;
 
+  busy_i      : in std_logic;
   byte_cnt_i : in std_logic_vector(15 downto 0);
   error_i      : in std_logic_vector(0 downto 0);
   
@@ -178,7 +179,8 @@ begin
             r_sema      <= (others => '0');
             r_udp_raw   <= (others => '0');
             r_udp_we    <= '0';
-            r_stall     <= '0';   
+            r_stall     <= '0'; 
+            r_ops_max   <= (others => '0'); 
          else
             --gather status info
             r_stat(error_i'range)   <= error_i; 
@@ -208,12 +210,12 @@ begin
                         when c_CLEAR          => r_clr         <= f_wb_wr(r_clr,          v_dat_i, v_sel, "set");
                                                  r_udp_raw     <= (others => '0');      
                         when c_FLUSH          => if(r_udp_raw = "0") then
-                                                    if(unsigned(byte_cnt_i) /= 0 and unsigned(error_i) = 0) then
+                                                    if((unsigned(byte_cnt_i) /= 0 or busy_i = '1')) then
                                                       --report "flushing" severity note;
                                                       r_flush       <= f_wb_wr(r_flush,        v_dat_i, v_sel, "set");
                                                     else
                                                       --report "OVERFLOW detected" severity error;
-                                                      r_clr         <= f_wb_wr(r_clr,          v_dat_i, v_sel, "set"); 
+                                                      --r_clr         <= f_wb_wr(r_clr,          v_dat_i, v_sel, "set"); 
                                                       r_slave_out_ack  <= '0'; r_slave_out_err <= '1';  
                                                     end if;
                                                  else

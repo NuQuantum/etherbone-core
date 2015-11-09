@@ -158,7 +158,7 @@ architecture rtl of eb_master_top is
    signal s_skip_stb       : std_logic;
    signal s_length         : unsigned(15 downto 0); -- of UDP in words
    signal s_max_ops        : unsigned(15 downto 0); -- max eb ops count per packet
-   
+   signal s_busy : std_logic;
    
    signal s_udp_raw_o   : std_logic;
    signal s_udp_we_o    : std_logic;
@@ -210,10 +210,10 @@ architecture rtl of eb_master_top is
       return ret;
    end function;
  
-   constant c_ctrl_adr : std_logic_vector(31 downto 0) := x"00000000"; 
-   constant c_ctrl_msk : std_logic_vector(31 downto 0) := f_ctrl_msk;
-   constant c_framer_adr : std_logic_vector(31 downto 0) := f_framer_adr;
-   constant c_framer_msk : std_logic_vector(31 downto 0) := f_framer_msk;
+   constant c_ctrl_adr    : std_logic_vector(31 downto 0) := x"00000000"; 
+   constant c_ctrl_msk    : std_logic_vector(31 downto 0) := f_ctrl_msk;
+   constant c_framer_adr  : std_logic_vector(31 downto 0) := f_framer_adr;
+   constant c_framer_msk  : std_logic_vector(31 downto 0) := f_framer_msk;
 
 begin
 -- instances:
@@ -271,7 +271,7 @@ begin
 
       byte_cnt_i  => s_byte_cnt,
       error_i(0)  => s_ovf,
-
+      busy_i      => s_busy,
       clear_o     => s_clear,
       flush_o     => s_tx_send_now,
 
@@ -306,10 +306,10 @@ begin
 
       byte_cnt_o      => s_byte_cnt,
       ovf_o           => s_ovf,
+      busy_o          => s_busy,
 
       tx_send_now_i   => s_tx_send_now,
       tx_flush_o      => s_tx_flush, 
-      max_ops_i       => s_max_ops,
       length_i        => s_length,
       cfg_rec_hdr_i   => s_cfg_rec_hdr);  
  
