@@ -297,40 +297,7 @@ package eb_internals_pkg is
  
 
  
-   component eb_master_wb_if is
-    generic(g_adr_bits_hi : natural;
-      g_mtu         : natural);
-    port(
-      clk_i       : in  std_logic;
-      rst_n_i     : in  std_logic;
-      
-      slave_i     : in  t_wishbone_slave_in;
-      slave_o     : out t_wishbone_slave_out;
-      
-      byte_cnt_i  : in std_logic_vector(15 downto 0);
-      error_i     : in std_logic_vector(0 downto 0);
-      busy_i      : in std_logic;
-      
-      clear_o     : out std_logic;
-      flush_o     : out std_logic;
-      
-      my_mac_o    : out std_logic_vector(47 downto 0);
-      my_ip_o     : out std_logic_vector(31 downto 0);
-      my_port_o   : out std_logic_vector(15 downto 0);
-      
-      his_mac_o   : out std_logic_vector(47 downto 0); 
-      his_ip_o    : out std_logic_vector(31 downto 0);
-      his_port_o  : out std_logic_vector(15 downto 0); 
-      length_o    : out unsigned(15 downto 0);
-      max_ops_o   : out unsigned(15 downto 0);
-      adr_hi_o    : out std_logic_vector(g_adr_bits_hi-1 downto 0);
-      eb_opt_o    : out t_rec_hdr;
-      
-      udp_raw_o   : out std_logic;
-      udp_we_o    : out std_logic;
-      udp_valid_i : in  std_logic;   
-      udp_data_o  : out std_logic_vector(31 downto 0));
-   end component;
+  
   
   
    component eb_framer is
