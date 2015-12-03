@@ -110,9 +110,13 @@ signal r_eb_hdr       : t_eb_hdr;
 
 -- FSMs
 type t_mux_state is (s_INIT, s_IDLE, s_EB, s_REC, s_WA, s_RA, s_WRITE, s_READ, s_LOAD, s_NEXT, s_SEND, s_ERROR);
-signal r_mux_state    : t_mux_state;
-signal r_cnt_ops     : unsigned(8 downto 0);
-signal r_byte_cnt : unsigned(15 downto 0);
+signal r_state,
+       s_state_next   : t_mux_state;
+
+signal r_ops_cnt,
+       s_ops_cnt_next : unsigned(8 downto 0);
+signal r_byte_cnt,
+       s_byte_cnt_next : unsigned(15 downto 0);
 
 signal s_recgen_slave_i  : t_wishbone_slave_in;
 
@@ -143,7 +147,7 @@ begin
 -- IO assignments
 ------------------------------------------------------------------------------
 
-  busy_o <= tx_cyc or s_busy;
+  busy_o              <= tx_cyc or s_busy;
   s_slave_stall       <= (op_fifo_full or not s_space_sufficient or s_recgen_slave_stall);
   s_space_sufficient  <= '1' when r_byte_cnt <= length_i
                     else '0';
@@ -270,7 +274,7 @@ begin
 ------------------------------------------------------------------------------
   r_eb_hdr  <= c_eb_init;
   
-  OMux : with r_mux_state select
+  OMux : with r_state select
   master_o.dat <= op_fifo_q(31 downto 0)  when s_WRITE | s_READ,
                f_format_rec(rec_hdr)  when s_REC,
                adr_wr                  when s_WA,
@@ -280,139 +284,230 @@ begin
                
            
 
-  p_eb_mux : process (clk_i) is
-  variable v_state         : t_mux_state;
+  p_fsm_sync : process (clk_i) is
   begin
     if rising_edge(clk_i) then
       if rst_n_i = '0' then
-        r_mux_state     <= s_IDLE;
-        tx_cyc          <= '0';
-        r_tx_send_now   <= '0';
+        r_state         <= s_INIT;
         r_byte_cnt      <= (others => '0');
-      else   
-        v_state         := r_mux_state;                    
-        tx_stb          <= '0';
+        r_ops_cnt       <= (others => '0');  
+        r_tx_send_now   <= '0';
+      else  
+        r_state     <= s_state_next;
+        r_byte_cnt  <= s_byte_cnt_next;
+        r_ops_cnt   <= s_ops_cnt_next;  
 
-        r_slave_ack     <= (slave_i.cyc and slave_i.stb and not s_slave_stall);    
-        r_pop_cmd       <= '0';
-        rec_fifo_pop    <= '0';  
 
+        r_slave_ack     <= (slave_i.cyc and slave_i.stb and not s_slave_stall);
         r_rec_byte_cnt  <= s_word_cnt(13 downto 0) & "00";
-        r_tx_send_now   <= (r_tx_send_now or tx_send_now_i) and op_fifo_full; --prolong tx_send_now if the buffer is full until it can be written
-        
-        case r_mux_state is
-          when s_INIT   =>  v_state           := s_IDLE;
-          when s_IDLE   =>  if(rec_fifo_empty = '0') then
-                                  
-                              v_state := s_EB;
-                            end if;
-                            
-          when s_EB     =>  if(master_i.stall = '0') then
-                              r_byte_cnt <= r_byte_cnt +4;
-                              v_state    := s_REC; -- output EB hdr
-                            end if;
-                            
-          when s_REC    =>  if(master_i.stall = '0' and rec_fifo_empty = '0') then -- output record hdr
-                              r_byte_cnt <= r_byte_cnt + r_rec_byte_cnt;                                
-                              if(or_all(std_logic_vector(rec_hdr.wr_cnt))= '1') then
-                                v_state    := s_WA;
-                              elsif(or_all(std_logic_vector(rec_hdr.rd_cnt)) = '1') then
-                                v_state    := s_RA;
-                              else
-                                v_state    := s_NEXT;
-                              end if;
-                            end if;
-          
-          when s_WA     =>  if(master_i.stall = '0') then
-                              r_cnt_ops  <= '0' & rec_hdr.wr_cnt -2; -- output write base address
-                              v_state    := s_WRITE;
-                            end if;               
-          
-          when s_WRITE  =>  if(master_i.stall = '0') then
-                              r_cnt_ops <= r_cnt_ops-1;
-                              if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output write values
-                                if(or_all(std_logic_vector(rec_hdr.rd_cnt)) = '1') then
-                                  v_state := s_RA;
-                                else
-                                  v_state := s_LOAD;
-                                end if;
-                              end if;
-                            end if;
-          
-          when s_RA     =>  if(master_i.stall = '0') then
-                              r_cnt_ops    <= '0' & rec_hdr.rd_cnt -2; -- output readback address
-                              v_state    := s_READ;
-                            end if;  
-          
-          when s_READ   =>  if(master_i.stall = '0') then
-                              r_cnt_ops <= r_cnt_ops-1;
-                              if(r_cnt_ops(r_cnt_ops'left) = '1') then -- output read addresses
-                                v_state := s_LOAD;
-                              end if;
-                            end if;
-          
-          when s_LOAD   =>  r_byte_cnt <= r_byte_cnt + r_rec_byte_cnt;
-                            v_state := s_NEXT;
-
-          when s_NEXT   =>  --clear buffer on outside request?
-
-                            if(send_now = '1' or s_space_sufficient = '0') then
-                              r_pop_cmd <= '1';     
-                              v_state   := s_SEND;
-                            elsif (rec_fifo_empty = '0') then
-                              v_state   := s_REC;  
-                            end if;  
-                               
-          when s_SEND   =>  r_byte_cnt  <= (others => '0');
-                            v_state     := s_IDLE;
-                            
-          when others   =>  v_state := s_IDLE;
-        end case;
-      
-        
-        -- flags on state transition
-        if(v_state = s_EB     or
-           v_state = s_REC    or
-           v_state = s_WA     or
-           v_state = s_WRITE  or
-           v_state = s_RA     or
-           v_state = s_READ   ) then
-         tx_stb   <= '1';
-        end if;
-        
-
-        if(v_state = s_eb) then
-          tx_cyc      <= '1';
-          tx_flush_o  <= '1';
-        else
-          tx_flush_o  <= '0';   
-        end if;
-
-        if(v_state = s_WRITE or
-           v_state = s_READ  or
-           v_state = s_SEND) then
-         r_pop_cmd <= '1'; 
-        end if;   
-        
-        if(v_state = s_LOAD) then
-          rec_fifo_pop <= '1';
-        end if;
-        
-        if(v_state = s_SEND) then
-          tx_cyc        <= '0';
-        end if;
-        
-        if(v_state = s_ERROR) then
-           r_abort         <= '1';
-        else
-           r_abort         <= '0';
-        end if;
-        
-                                            
-        
-        r_mux_state <= v_state;
+        r_tx_send_now   <= (r_tx_send_now or tx_send_now_i) and op_fifo_full; --prolong tx_send_now if the buffer is full until it can be written 
       end if;
     end if;
+  end process;
+
+
+
+
+
+  p_fsm_logic : process (master_i.stall, rec_fifo_empty, r_state, r_ops_cnt, send_now, s_space_sufficient, rec_hdr.rd_cnt, rec_hdr.wr_cnt) is
+  
+  begin
+    case r_state is
+      when s_INIT   =>  tx_cyc        <= '0';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '0';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '0';
+
+                        s_byte_cnt_next <= (others => '0');
+                        s_ops_cnt_next  <= (others => '0');   
+
+                        s_state_next <= s_IDLE;
+
+      when s_IDLE   =>  tx_cyc        <= '0';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '0';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '0';
+
+                        s_byte_cnt_next <= (others => '0');
+                        s_ops_cnt_next  <= (others => '0');        
+
+                        if(rec_fifo_empty = '0') then
+                          s_state_next <= s_EB;
+                        else
+                          s_state_next <= r_state; 
+                        end if;
+                        
+      when s_EB     =>  tx_cyc        <= '1';
+                        tx_flush_o    <= '1';
+                        tx_stb        <= '1';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '0';
+                      
+                        s_ops_cnt_next  <= r_ops_cnt;
+
+                        if(master_i.stall = '0') then
+                          s_byte_cnt_next <= r_byte_cnt +4;
+                          s_state_next <= s_REC; -- output EB hdr
+                        else
+                          s_byte_cnt_next <= r_byte_cnt;
+                          s_state_next    <= r_state;   
+                        end if;
+                        
+      when s_REC    =>  tx_cyc        <= '1';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '1';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '0';
+
+                        s_ops_cnt_next  <= r_ops_cnt;
+
+                        if(master_i.stall = '0' and rec_fifo_empty = '0') then -- output record hdr
+                          s_byte_cnt_next <= r_byte_cnt + r_rec_byte_cnt;                                
+                          if(or_all(std_logic_vector(rec_hdr.wr_cnt))= '1') then
+                            s_state_next <= s_WA;
+                          elsif(or_all(std_logic_vector(rec_hdr.rd_cnt)) = '1') then
+                            s_state_next <= s_RA;
+                          else
+                            s_state_next <= s_NEXT;
+                          end if;
+                        else
+                          s_state_next    <= r_state; 
+                          s_byte_cnt_next <= r_byte_cnt;
+                        end if;
+      
+      when s_WA     =>  tx_cyc        <= '1';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '1';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '0';  
+
+                        s_byte_cnt_next <= r_byte_cnt;  
+
+                        if(master_i.stall = '0') then
+                          s_ops_cnt_next <= '0' & rec_hdr.wr_cnt -2; -- output write base address
+                          s_state_next <= s_WRITE;
+                        else
+                          s_ops_cnt_next  <= r_ops_cnt;
+                          s_state_next <= r_state;       
+                        end if;               
+      
+      when s_WRITE  =>  tx_cyc        <= '1';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '1';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '1';
+
+                        s_byte_cnt_next <= r_byte_cnt;   
+
+
+                        if(master_i.stall = '0') then
+                          s_ops_cnt_next <= r_ops_cnt-1;
+                          if(r_ops_cnt(r_ops_cnt'left) = '1') then -- output write values
+                            if(or_all(std_logic_vector(rec_hdr.rd_cnt)) = '1') then
+                              s_state_next <= s_RA;
+                            else
+                              s_state_next <= s_LOAD;
+                            end if;
+                          else
+                            s_state_next <= r_state;         
+                          end if;
+                        else
+                          s_ops_cnt_next  <= r_ops_cnt;
+                          s_state_next    <= r_state;   
+                        end if;
+      
+      when s_RA     =>  tx_cyc        <= '1';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '1';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '0';
+
+                        s_byte_cnt_next <= r_byte_cnt; 
+
+                        if(master_i.stall = '0') then
+                          s_ops_cnt_next <= '0' & rec_hdr.rd_cnt -2; -- output readback address
+                          s_state_next <= s_READ;
+                        else
+                          s_ops_cnt_next <= r_ops_cnt; -- output readback address
+                          s_state_next   <= r_state; 
+                        end if;  
+      
+      when s_READ   =>  tx_cyc        <= '1';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '1';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '1';
+
+                        s_byte_cnt_next <= r_byte_cnt;
+                        s_state_next    <= r_state;   
+
+                        if(master_i.stall = '0') then
+                          s_ops_cnt_next <= r_ops_cnt-1;
+                          if(r_ops_cnt(r_ops_cnt'left) = '1') then -- output read addresses
+                            s_state_next <= s_LOAD;
+                          else
+                            s_state_next <= r_state; 
+                          end if;
+                        else
+                          s_state_next    <= r_state; 
+                          s_ops_cnt_next  <= r_ops_cnt;
+                        end if;
+      
+      when s_LOAD   =>  tx_cyc        <= '1';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '0';
+                        rec_fifo_pop  <= '1';
+                        r_pop_cmd     <= '0';
+                        
+                        s_ops_cnt_next  <= r_ops_cnt;
+                        s_byte_cnt_next <= r_byte_cnt + r_rec_byte_cnt;        
+                        s_state_next  <= s_NEXT;
+
+      when s_NEXT   =>  --clear buffer on outside request?
+                        tx_cyc        <= '1';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '0';  
+                        rec_fifo_pop  <= '0';
+                        r_pop_cmd     <= send_now;
+
+                        s_ops_cnt_next  <= r_ops_cnt;
+                        s_byte_cnt_next <= r_byte_cnt;      
+
+
+                        if(send_now = '1' or s_space_sufficient = '0') then
+                          s_state_next <= s_SEND;
+                        elsif (rec_fifo_empty = '0') then
+                          s_state_next <= s_REC;
+                        else
+                          s_state_next <= r_state;    
+                        end if;  
+                           
+      when s_SEND   =>  tx_cyc        <= '0';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '0';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '1';
+
+                        s_ops_cnt_next  <= r_ops_cnt;
+                        s_byte_cnt_next <= r_byte_cnt;       
+                        s_state_next    <= s_IDLE;
+                        
+      when others   =>  tx_cyc        <= '0';
+                        tx_flush_o    <= '0';
+                        tx_stb        <= '0';  
+                        rec_fifo_pop  <= '0'; 
+                        r_pop_cmd     <= '0';
+
+                        s_ops_cnt_next  <= r_ops_cnt;
+                        s_byte_cnt_next <= r_byte_cnt;   
+                        s_state_next    <= s_IDLE;
+    end case;
+
+
+
+
   end process;
 
 end architecture;
