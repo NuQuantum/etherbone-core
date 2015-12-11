@@ -1,7 +1,7 @@
 --! @file        ebm_auto.vhd
 --  DesignUnit   ebm_auto
 --! @author      M. Kreider <>
---! @date        16/11/2015
+--! @date        10/12/2015
 --! @version     0.2.0
 --! @copyright   2015 GSI Helmholtz Centre for Heavy Ion Research GmbH
 --!
@@ -39,29 +39,26 @@ use work.genram_pkg.all;
 use work.ebm_auto_pkg.all;
 
 entity ebm_auto is
-generic(
-   g_adr_bits_hi  : natural   := 10 --Number of high address bits
-);
 Port(
-   clk_sys_i      : std_logic;                                       -- Clock input for sys domain
-   rst_sys_n_i    : std_logic;                                       -- Reset input (active low) for sys domain
-   slave_stall_i  : in  std_logic_vector(1-1 downto 0);              -- flow control
-   status_i       : in  std_logic_vector(32-1 downto 0);             -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
-   adr_hi_o       : out std_logic_vector(g_adr_bits_hi-1 downto 0);  -- High Address bits inserted into WB operations
-   clear_o        : out std_logic_vector(1-1 downto 0);              -- Clears EBM buffers
-   dst_ip_o       : out std_logic_vector(32-1 downto 0);             -- Destination IPV4 address
-   dst_mac_o      : out std_logic_vector(48-1 downto 0);             -- Destination MAC address
-   dst_port_o     : out std_logic_vector(16-1 downto 0);             -- Destination port number
-   eb_opt_o       : out std_logic_vector(32-1 downto 0);             -- Default Record Header Options for current transaction
-   flush_o        : out std_logic_vector(1-1 downto 0);              -- Send stored data as an EB packet
-   mtu_o          : out std_logic_vector(16-1 downto 0);             -- Maximum packet size
-   sema_o         : out std_logic_vector(32-1 downto 0);             -- Semaphore register in case multiple users want access
-   src_ip_o       : out std_logic_vector(32-1 downto 0);             -- Source IPV4 address
-   src_mac_o      : out std_logic_vector(48-1 downto 0);             -- Source MAC address
-   src_port_o     : out std_logic_vector(16-1 downto 0);             -- Source port number
-   udp_data_o     : out std_logic_vector(16-1 downto 0);             -- Raw udp Data input
-   udp_data_WR_o  : out std_logic_vector(1-1 downto 0);              -- Write enable flag
-   udp_raw_o      : out std_logic_vector(1-1 downto 0);              -- If this Flag is set, you can create raw udp packets by writing to udp_data
+   clk_sys_i      : std_logic;                           -- Clock input for sys domain
+   rst_sys_n_i    : std_logic;                           -- Reset input (active low) for sys domain
+   slave_stall_i  : in  std_logic_vector(1-1 downto 0);  -- flow control
+   status_i       : in  std_logic_vector(32-1 downto 0); -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
+   adr_hi_o       : out std_logic_vector(32-1 downto 0); -- High Address bits inserted into WB operations
+   clear_o        : out std_logic_vector(1-1 downto 0);  -- Clears EBM buffers
+   dst_ip_o       : out std_logic_vector(32-1 downto 0); -- Destination IPV4 address
+   dst_mac_o      : out std_logic_vector(48-1 downto 0); -- Destination MAC address
+   dst_port_o     : out std_logic_vector(16-1 downto 0); -- Destination port number
+   eb_opt_o       : out std_logic_vector(32-1 downto 0); -- Default Record Header Options for current transaction
+   flush_o        : out std_logic_vector(1-1 downto 0);  -- Send stored data as an EB packet
+   mtu_o          : out std_logic_vector(16-1 downto 0); -- Maximum packet size
+   sema_o         : out std_logic_vector(32-1 downto 0); -- Semaphore register in case multiple users want access
+   src_ip_o       : out std_logic_vector(32-1 downto 0); -- Source IPV4 address
+   src_mac_o      : out std_logic_vector(48-1 downto 0); -- Source MAC address
+   src_port_o     : out std_logic_vector(16-1 downto 0); -- Source port number
+   udp_data_o     : out std_logic_vector(16-1 downto 0); -- Raw udp Data input
+   udp_data_WR_o  : out std_logic_vector(1-1 downto 0);  -- Write enable flag
+   udp_raw_o      : out std_logic_vector(1-1 downto 0);  -- If this Flag is set, you can create raw udp packets by writing to udp_data
    
    slave_i        : in  t_wishbone_slave_in;
    slave_o        : out t_wishbone_slave_out
@@ -72,25 +69,25 @@ end ebm_auto;
 
 architecture rtl of ebm_auto is
 
-   signal r_slave_stall    : std_logic_vector(1-1 downto 0);               -- flow control
-   signal s_slave_stall_i  : std_logic_vector(1-1 downto 0);               -- flow control
-   signal r_clear          : std_logic_vector(1-1 downto 0);               -- Clears EBM buffers
-   signal r_flush          : std_logic_vector(1-1 downto 0);               -- Send stored data as an EB packet
-   signal r_status         : std_logic_vector(32-1 downto 0);              -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
-   signal s_status_i       : std_logic_vector(32-1 downto 0);              -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
-   signal r_src_mac        : std_logic_vector(48-1 downto 0);              -- Source MAC address
-   signal r_src_ip         : std_logic_vector(32-1 downto 0);              -- Source IPV4 address
-   signal r_src_port       : std_logic_vector(16-1 downto 0);              -- Source port number
-   signal r_dst_mac        : std_logic_vector(48-1 downto 0);              -- Destination MAC address
-   signal r_dst_ip         : std_logic_vector(32-1 downto 0);              -- Destination IPV4 address
-   signal r_dst_port       : std_logic_vector(16-1 downto 0);              -- Destination port number
-   signal r_mtu            : std_logic_vector(16-1 downto 0);              -- Maximum packet size
-   signal r_adr_hi         : std_logic_vector(g_adr_bits_hi-1 downto 0);   -- High Address bits inserted into WB operations
-   signal r_eb_opt         : std_logic_vector(32-1 downto 0);              -- Default Record Header Options for current transaction
-   signal r_sema           : std_logic_vector(32-1 downto 0);              -- Semaphore register in case multiple users want access
-   signal r_udp_raw        : std_logic_vector(1-1 downto 0);               -- If this Flag is set, you can create raw udp packets by writing to udp_data
-   signal r_udp_data_WR    : std_logic_vector(1-1 downto 0);               -- Write enable flag
-   signal r_udp_data       : std_logic_vector(16-1 downto 0);              -- Raw udp Data input
+   signal r_slave_stall    : std_logic_vector(1-1 downto 0);   -- flow control
+   signal s_slave_stall_i  : std_logic_vector(1-1 downto 0);   -- flow control
+   signal r_clear          : std_logic_vector(1-1 downto 0);   -- Clears EBM buffers
+   signal r_flush          : std_logic_vector(1-1 downto 0);   -- Send stored data as an EB packet
+   signal r_status         : std_logic_vector(32-1 downto 0);  -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
+   signal s_status_i       : std_logic_vector(32-1 downto 0);  -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
+   signal r_src_mac        : std_logic_vector(48-1 downto 0);  -- Source MAC address
+   signal r_src_ip         : std_logic_vector(32-1 downto 0);  -- Source IPV4 address
+   signal r_src_port       : std_logic_vector(16-1 downto 0);  -- Source port number
+   signal r_dst_mac        : std_logic_vector(48-1 downto 0);  -- Destination MAC address
+   signal r_dst_ip         : std_logic_vector(32-1 downto 0);  -- Destination IPV4 address
+   signal r_dst_port       : std_logic_vector(16-1 downto 0);  -- Destination port number
+   signal r_mtu            : std_logic_vector(16-1 downto 0);  -- Maximum packet size
+   signal r_adr_hi         : std_logic_vector(32-1 downto 0);  -- High Address bits inserted into WB operations
+   signal r_eb_opt         : std_logic_vector(32-1 downto 0);  -- Default Record Header Options for current transaction
+   signal r_sema           : std_logic_vector(32-1 downto 0);  -- Semaphore register in case multiple users want access
+   signal r_udp_raw        : std_logic_vector(1-1 downto 0);   -- If this Flag is set, you can create raw udp packets by writing to udp_data
+   signal r_udp_data_WR    : std_logic_vector(1-1 downto 0);   -- Write enable flag
+   signal r_udp_data       : std_logic_vector(16-1 downto 0);  -- Raw udp Data input
 
 
 begin
@@ -185,20 +182,20 @@ begin
                else
                   -- WISHBONE READ ACTIONS
                   case v_a is
-                     when c_status_GET    => slave_o.dat(31 downto 0)               <= r_status;                  -- 
-                     when c_src_mac_RW_0  => slave_o.dat(31 downto 0)               <= r_src_mac(31 downto 0);    -- 
-                     when c_src_mac_RW_1  => slave_o.dat(15 downto 0)               <= r_src_mac(47 downto 32);   -- 
-                     when c_src_ip_RW     => slave_o.dat(31 downto 0)               <= r_src_ip;                  -- 
-                     when c_src_port_RW   => slave_o.dat(15 downto 0)               <= r_src_port;                -- 
-                     when c_dst_mac_RW_0  => slave_o.dat(31 downto 0)               <= r_dst_mac(31 downto 0);    -- 
-                     when c_dst_mac_RW_1  => slave_o.dat(15 downto 0)               <= r_dst_mac(47 downto 32);   -- 
-                     when c_dst_ip_RW     => slave_o.dat(31 downto 0)               <= r_dst_ip;                  -- 
-                     when c_dst_port_RW   => slave_o.dat(15 downto 0)               <= r_dst_port;                -- 
-                     when c_mtu_RW        => slave_o.dat(15 downto 0)               <= r_mtu;                     -- 
-                     when c_adr_hi_RW     => slave_o.dat(g_adr_bits_hi-1 downto 0)  <= r_adr_hi;                  -- 
-                     when c_eb_opt_RW     => slave_o.dat(31 downto 0)               <= r_eb_opt;                  -- 
-                     when c_sema_RW       => slave_o.dat(31 downto 0)               <= r_sema;                    -- 
-                     when c_udp_raw_RW    => slave_o.dat(0 downto 0)                <= r_udp_raw;                 -- 
+                     when c_status_GET    => slave_o.dat(31 downto 0)   <= r_status;                  -- 
+                     when c_src_mac_RW_0  => slave_o.dat(31 downto 0)   <= r_src_mac(31 downto 0);    -- 
+                     when c_src_mac_RW_1  => slave_o.dat(15 downto 0)   <= r_src_mac(47 downto 32);   -- 
+                     when c_src_ip_RW     => slave_o.dat(31 downto 0)   <= r_src_ip;                  -- 
+                     when c_src_port_RW   => slave_o.dat(15 downto 0)   <= r_src_port;                -- 
+                     when c_dst_mac_RW_0  => slave_o.dat(31 downto 0)   <= r_dst_mac(31 downto 0);    -- 
+                     when c_dst_mac_RW_1  => slave_o.dat(15 downto 0)   <= r_dst_mac(47 downto 32);   -- 
+                     when c_dst_ip_RW     => slave_o.dat(31 downto 0)   <= r_dst_ip;                  -- 
+                     when c_dst_port_RW   => slave_o.dat(15 downto 0)   <= r_dst_port;                -- 
+                     when c_mtu_RW        => slave_o.dat(15 downto 0)   <= r_mtu;                     -- 
+                     when c_adr_hi_RW     => slave_o.dat(31 downto 0)   <= r_adr_hi;                  -- 
+                     when c_eb_opt_RW     => slave_o.dat(31 downto 0)   <= r_eb_opt;                  -- 
+                     when c_sema_RW       => slave_o.dat(31 downto 0)   <= r_sema;                    -- 
+                     when c_udp_raw_RW    => slave_o.dat(0 downto 0)    <= r_udp_raw;                 -- 
                      when others => slave_o.ack <= '0'; slave_o.err <= '1';
                   end case;
                end if; -- v_w

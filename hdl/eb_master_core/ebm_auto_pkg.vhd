@@ -1,7 +1,7 @@
 --! @file        ebm_auto_pkg.vhd
 --  DesignUnit   ebm_auto
 --! @author      M. Kreider <>
---! @date        16/11/2015
+--! @date        10/12/2015
 --! @version     0.2.0
 --! @copyright   2015 GSI Helmholtz Centre for Heavy Ion Research GmbH
 --!
@@ -38,49 +38,46 @@ use work.matrix_pkg.all;
 use work.genram_pkg.all;
 package ebm_auto_pkg is
 
-   constant c_clear_OWR    : natural   := 16#00#;  -- wo,             1 b, Clears EBM buffers
-   constant c_flush_OWR    : natural   := 16#04#;  -- wo,             1 b, Send stored data as an EB packet
-   constant c_status_GET   : natural   := 16#08#;  -- ro,            32 b, Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
-   constant c_src_mac_RW_0 : natural   := 16#0c#;  -- rw,            32 b, Source MAC address
-   constant c_src_mac_RW_1 : natural   := 16#10#;  -- rw,            16 b, Source MAC address
-   constant c_src_ip_RW    : natural   := 16#14#;  -- rw,            32 b, Source IPV4 address
-   constant c_src_port_RW  : natural   := 16#18#;  -- rw,            16 b, Source port number
-   constant c_dst_mac_RW_0 : natural   := 16#1c#;  -- rw,            32 b, Destination MAC address
-   constant c_dst_mac_RW_1 : natural   := 16#20#;  -- rw,            16 b, Destination MAC address
-   constant c_dst_ip_RW    : natural   := 16#24#;  -- rw,            32 b, Destination IPV4 address
-   constant c_dst_port_RW  : natural   := 16#28#;  -- rw,            16 b, Destination port number
-   constant c_mtu_RW       : natural   := 16#2c#;  -- rw,            16 b, Maximum packet size
-   constant c_adr_hi_RW    : natural   := 16#30#;  -- rw, g_adr_bits_hi b, High Address bits inserted into WB operations
-   constant c_eb_opt_RW    : natural   := 16#34#;  -- rw,            32 b, Default Record Header Options for current transaction
-   constant c_sema_RW      : natural   := 16#38#;  -- rw,            32 b, Semaphore register in case multiple users want access
-   constant c_udp_raw_RW   : natural   := 16#3c#;  -- rw,             1 b, If this Flag is set, you can create raw udp packets by writing to udp_data
-   constant c_udp_data_OWR : natural   := 16#40#;  -- wo,            16 b, Raw udp Data input
+   constant c_clear_OWR    : natural   := 16#00#;  -- wo,  1 b, Clears EBM buffers
+   constant c_flush_OWR    : natural   := 16#04#;  -- wo,  1 b, Send stored data as an EB packet
+   constant c_status_GET   : natural   := 16#08#;  -- ro, 32 b, Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
+   constant c_src_mac_RW_0 : natural   := 16#0c#;  -- rw, 32 b, Source MAC address
+   constant c_src_mac_RW_1 : natural   := 16#10#;  -- rw, 16 b, Source MAC address
+   constant c_src_ip_RW    : natural   := 16#14#;  -- rw, 32 b, Source IPV4 address
+   constant c_src_port_RW  : natural   := 16#18#;  -- rw, 16 b, Source port number
+   constant c_dst_mac_RW_0 : natural   := 16#1c#;  -- rw, 32 b, Destination MAC address
+   constant c_dst_mac_RW_1 : natural   := 16#20#;  -- rw, 16 b, Destination MAC address
+   constant c_dst_ip_RW    : natural   := 16#24#;  -- rw, 32 b, Destination IPV4 address
+   constant c_dst_port_RW  : natural   := 16#28#;  -- rw, 16 b, Destination port number
+   constant c_mtu_RW       : natural   := 16#2c#;  -- rw, 16 b, Maximum packet size
+   constant c_adr_hi_RW    : natural   := 16#30#;  -- rw, 32 b, High Address bits inserted into WB operations
+   constant c_eb_opt_RW    : natural   := 16#34#;  -- rw, 32 b, Default Record Header Options for current transaction
+   constant c_sema_RW      : natural   := 16#38#;  -- rw, 32 b, Semaphore register in case multiple users want access
+   constant c_udp_raw_RW   : natural   := 16#3c#;  -- rw,  1 b, If this Flag is set, you can create raw udp packets by writing to udp_data
+   constant c_udp_data_OWR : natural   := 16#40#;  -- wo, 16 b, Raw udp Data input
 
    --| Component ------------------------- ebm_auto --------------------------------------------|
    component ebm_auto is
-   generic(
-      g_adr_bits_hi  : natural   := 10 --Number of high address bits
-   );
    Port(
-      clk_sys_i      : std_logic;                                       -- Clock input for sys domain
-      rst_sys_n_i    : std_logic;                                       -- Reset input (active low) for sys domain
-      slave_stall_i  : in  std_logic_vector(1-1 downto 0);              -- flow control
-      status_i       : in  std_logic_vector(32-1 downto 0);             -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
-      adr_hi_o       : out std_logic_vector(g_adr_bits_hi-1 downto 0);  -- High Address bits inserted into WB operations
-      clear_o        : out std_logic_vector(1-1 downto 0);              -- Clears EBM buffers
-      dst_ip_o       : out std_logic_vector(32-1 downto 0);             -- Destination IPV4 address
-      dst_mac_o      : out std_logic_vector(48-1 downto 0);             -- Destination MAC address
-      dst_port_o     : out std_logic_vector(16-1 downto 0);             -- Destination port number
-      eb_opt_o       : out std_logic_vector(32-1 downto 0);             -- Default Record Header Options for current transaction
-      flush_o        : out std_logic_vector(1-1 downto 0);              -- Send stored data as an EB packet
-      mtu_o          : out std_logic_vector(16-1 downto 0);             -- Maximum packet size
-      sema_o         : out std_logic_vector(32-1 downto 0);             -- Semaphore register in case multiple users want access
-      src_ip_o       : out std_logic_vector(32-1 downto 0);             -- Source IPV4 address
-      src_mac_o      : out std_logic_vector(48-1 downto 0);             -- Source MAC address
-      src_port_o     : out std_logic_vector(16-1 downto 0);             -- Source port number
-      udp_data_o     : out std_logic_vector(16-1 downto 0);             -- Raw udp Data input
-      udp_data_WR_o  : out std_logic_vector(1-1 downto 0);              -- Write enable flag
-      udp_raw_o      : out std_logic_vector(1-1 downto 0);              -- If this Flag is set, you can create raw udp packets by writing to udp_data
+      clk_sys_i      : std_logic;                           -- Clock input for sys domain
+      rst_sys_n_i    : std_logic;                           -- Reset input (active low) for sys domain
+      slave_stall_i  : in  std_logic_vector(1-1 downto 0);  -- flow control
+      status_i       : in  std_logic_vector(32-1 downto 0); -- Status. 31..16: Packet counter. b2: Error b1: busy b0: configured
+      adr_hi_o       : out std_logic_vector(32-1 downto 0); -- High Address bits inserted into WB operations
+      clear_o        : out std_logic_vector(1-1 downto 0);  -- Clears EBM buffers
+      dst_ip_o       : out std_logic_vector(32-1 downto 0); -- Destination IPV4 address
+      dst_mac_o      : out std_logic_vector(48-1 downto 0); -- Destination MAC address
+      dst_port_o     : out std_logic_vector(16-1 downto 0); -- Destination port number
+      eb_opt_o       : out std_logic_vector(32-1 downto 0); -- Default Record Header Options for current transaction
+      flush_o        : out std_logic_vector(1-1 downto 0);  -- Send stored data as an EB packet
+      mtu_o          : out std_logic_vector(16-1 downto 0); -- Maximum packet size
+      sema_o         : out std_logic_vector(32-1 downto 0); -- Semaphore register in case multiple users want access
+      src_ip_o       : out std_logic_vector(32-1 downto 0); -- Source IPV4 address
+      src_mac_o      : out std_logic_vector(48-1 downto 0); -- Source MAC address
+      src_port_o     : out std_logic_vector(16-1 downto 0); -- Source port number
+      udp_data_o     : out std_logic_vector(16-1 downto 0); -- Raw udp Data input
+      udp_data_WR_o  : out std_logic_vector(1-1 downto 0);  -- Write enable flag
+      udp_raw_o      : out std_logic_vector(1-1 downto 0);  -- If this Flag is set, you can create raw udp packets by writing to udp_data
       
       slave_i        : in  t_wishbone_slave_in;
       slave_o        : out t_wishbone_slave_out

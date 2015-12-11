@@ -45,45 +45,8 @@
 --! -> drop cycle before switching betwenn ctrl & data!
 --!
 
---! Ctrl Register map
---!--------------------------------------------------------------------------------------
---! 0x00 wo CLEAR          writing '1' here will clear all data buffers        
+--! Ctrl Register map: See ebm_regs.h
 --!
---! 0x04 wo FLUSH          writing '1' here will send the packet. 
---!                        Will err when buffer empty or overflow
---!
---! 0x08 ro STATUS         b31..b16  Payload byte count 
---!                        b15..b01  reserved
---!                             b00  Buffer Overflow                               
---!
---! 0x0C rw SRC_MAC_HI              bytes 1-4 of source MAC address  
---! 0x10 rw SRC_MAC_LO     b15..b00 bytes 5-6 of source MAC address  
---!
---! 0x14 rw SRC_IPV4       source IPV4 address
---!
---! 0x18 rw SRC_UDP_PORT   b15..b00 source UDP port number 
---!
---! 0x1C rw DST_MAC_HI              bytes 1-4 of destination MAC address    
---! 0x20 rw DST_MAC_LO     b15..b00 bytes 5-6 of destination MAC address
---!
---! 0x24 rw DST_IPV4       destination IPV4 address
---!
---! 0x28 rw DST_UDP_PORT   b15..b00 destination UDP port number 
---!
---! 0x2C rw MTU            Maximum payload byte length
---!
---! 0x30 rw ADR_HI         b31..b31-g_adr_hi  High bits of the data address lines
---!
---! 0x34 rw OPS_MAX        Maximum payload wishbone operations (implementation pending)     
---!
---! 0x40 rw EB_OPT         Etherbone Record options
---!
---! 0x44 rw SEMA           Semaphore register, can be used to indicate current owner of EBM
---! 
---! 0x48 rw UDP_MODE       writing '1' bypasses Etherbone logic, enabling direct input of UDP payload,
---!                        resetting to '0' sends the packet.      
---! 
---! 0x4C wo UDP_DATA       Data interface for direct input of UDP payload
 --! @author Mathias Kreider <m.kreider@gsi.de>
 --!
 --------------------------------------------------------------------------------
@@ -138,7 +101,7 @@ architecture rtl of eb_master_top is
    constant slaves   : natural := 2;
    constant masters  : natural := 1;
 
-   signal s_adr_hi         : std_logic_vector(g_adr_bits_hi-1 downto 0);
+   signal s_adr_hi         : std_logic_vector(31 downto 0);
    signal s_cfg_rec_hdr    : t_wishbone_data;
   
    signal r_drain          : std_logic;
@@ -251,7 +214,7 @@ begin
    s_framer_in.cyc <= cbar_masterport_out(1).cyc;
    s_framer_in.stb <= cbar_masterport_out(1).stb; 
    s_framer_in.we  <= cbar_masterport_out(1).adr(c_rw_bit); 
-   s_framer_in.adr <= s_adr_hi & cbar_masterport_out(1).adr(slave_i.adr'left-g_adr_bits_hi downto 0); 
+   s_framer_in.adr <= s_adr_hi(s_adr_hi'left downto s_adr_hi'length-g_adr_bits_hi) & cbar_masterport_out(1).adr(slave_i.adr'left-g_adr_bits_hi downto 0); 
    s_framer_in.dat <= cbar_masterport_out(1).dat;
    s_framer_in.sel <= cbar_masterport_out(1).sel; 
    cbar_masterport_in(1) <= s_framer_out;
@@ -261,7 +224,6 @@ begin
 
 
    wbif : ebm_auto
-   generic map (g_adr_bits_hi => g_adr_bits_hi) 
    port map (
       clk_sys_i      => clk_i,
       rst_sys_n_i    => rst_n_i,
