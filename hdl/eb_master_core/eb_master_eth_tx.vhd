@@ -343,27 +343,25 @@ begin
   -- Flag for Checksum field, high when present on s_tx_dat            
   s_ip_chk_ins <= '1' when r_output_cnt = (c_eth_len + c_ip_chk_pos)
              else '0';
-             
+
   -- Flag for TOL field, high when present on s_tx_dat 
   s_udp_len_ins <= '1' when r_output_cnt = (c_eth_len + c_ip_len + c_udp_len_pos)
-             else '0';                      
-  
+             else '0';
+
   -- Correct checksum including TOL, valid on s_ip_chk_ins HI
   s_ip_chk <= not(std_logic_vector(unsigned(s_tx_dat) + unsigned(r_ip_tol)));
-  
+
   -- Output Mux for otf insertion
   s_otf_mux <= s_udp_len_ins & s_ip_chk_ins & s_ip_tol_ins & s_eth_typ_len_ins;
-  
-  otf_mux : with s_otf_mux select
-   src_o.dat <= s_tx_dat      when "0000",
-                r_eth_typ_len when "0001",
-                r_ip_tol      when "0010",
-                s_ip_chk      when "0100",
-                r_udp_len     when "1000",
-                s_tx_dat      when others;  
-  
 
-  
+  src_o.dat <= s_tx_dat      when s_otf_mux = "0000" and s_tx_typ='0' else
+               x"4000"       when s_otf_mux = "0000" and s_tx_typ='1' else
+               r_eth_typ_len when s_otf_mux = "0001" else
+               r_ip_tol      when s_otf_mux = "0010" else
+               s_ip_chk      when s_otf_mux = "0100" else
+               r_udp_len     when s_otf_mux = "1000" else
+               s_tx_dat;
+
   -- get TOL from first element in commit fifo
    otf_mod_ip_hdr : process(clk_i)
    begin

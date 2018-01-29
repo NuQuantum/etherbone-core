@@ -289,7 +289,8 @@ begin
   src_o.adr <= c_WRF_STATUS when s_tx_typ='1' else c_WRF_DATA;
   src_o.we  <= '1';
   src_o.sel <= "11";
-  src_o.dat <= s_tx_dat;
+  src_o.dat <= x"8000" when s_tx_typ = '1' else -- c_WRF_STATUS
+               s_tx_dat;                        -- c_WRF_DATA
   
   s_tx_pop <= not s_tx_empty and not (s_tx_cyc and src_i.stall);
   
