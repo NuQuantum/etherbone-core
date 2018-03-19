@@ -6,7 +6,7 @@
 -- Author     : Wesley W. Terpstra
 -- Company    : GSI
 -- Created    : 2013-04-08
--- Last update: 2013-04-08
+-- Last update: 2018-03-08
 -- Platform   : FPGA-generic
 -- Standard   : VHDL'93
 -------------------------------------------------------------------------------
@@ -84,7 +84,6 @@ architecture rtl of eb_cfg_fifo is
   
 begin
 
-  cfg_o.int <= '0';
   cfg_o.err <= '0';
   cfg_o.rty <= '0';
   cfg_o.stall <= '0';

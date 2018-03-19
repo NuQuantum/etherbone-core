@@ -6,7 +6,7 @@
 -- Author     : Wesley W. Terpstra
 -- Company    : GSI
 -- Created    : 2013-04-08
--- Last update: 2013-04-08
+-- Last update: 2018-03-08
 -- Platform   : FPGA-generic
 -- Standard   : VHDL'93
 -------------------------------------------------------------------------------
@@ -92,7 +92,6 @@ begin
   EB_RX_o.ack <= EB_RX_i.cyc and EB_RX_i.stb and not rx_stall;
   EB_RX_o.err <= '0';
   EB_RX_o.rty <= '0';
-  EB_RX_o.int <= '0';
   EB_RX_o.stall <= rx_stall;
   EB_RX_o.dat <= (others => '0');
   

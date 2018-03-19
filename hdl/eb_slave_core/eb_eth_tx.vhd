@@ -135,7 +135,6 @@ begin
       r_dat_o(15 downto 0) => s_tx_dat);
   
   slave_o.ack <= r_ack;
-  slave_o.int <= '0';
   slave_o.rty <= '0';
   slave_o.err <= '0';
   slave_o.stall <= s_stall;
