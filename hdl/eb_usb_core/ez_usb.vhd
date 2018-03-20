@@ -6,7 +6,7 @@
 -- Author     : Wesley W. Terpstra
 -- Company    : GSI
 -- Created    : 2013-04-04
--- Last update: 2013-04-04
+-- Last update: 2018-03-20
 -- Platform   : FPGA-generic
 -- Standard   : VHDL'93
 -------------------------------------------------------------------------------
@@ -251,7 +251,6 @@ begin
   usb2uart_uart_o.err <= '0';
   usb2uart_uart_o.rty <= '0';
   usb2uart_uart_o.dat <= (others => '0');
-  usb2uart_uart_o.int <= '0';
   
   -- this will drop bytes once buffers are full (no host connected)
   U_RX : uart_async_rx -- UART2USB
@@ -266,7 +265,6 @@ begin
   uart2usb_uart_o.ack <= rx_ready and uart2usb_uart_i.cyc and uart2usb_uart_i.stb;
   uart2usb_uart_o.err <= '0';
   uart2usb_uart_o.rty <= '0';
-  uart2usb_uart_o.int <= '0';
   uart2usb_uart_o.dat(31 downto 8) <= (others => '0');
   uart2usb_uart_o.stall <= not rx_ready;
   

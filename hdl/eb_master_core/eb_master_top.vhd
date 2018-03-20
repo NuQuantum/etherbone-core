@@ -343,7 +343,7 @@ begin
          s_narrow_in.stb <= s_udp_we_o;
          s_narrow_in.dat <= s_udp_data_o;
          s_udp_valid_i   <= s_udp_raw_o and s_udp_we_o and not s_narrow_out.stall;
-         s_narrow2framer <= ('0', '0', '0', '0', '0', (others => '0'));
+         s_narrow2framer <= ('0', '0', '0', '0', (others => '0'));
       else
          s_udp_valid_i   <= '0';
          s_narrow_in.cyc <= s_framer2narrow.cyc;

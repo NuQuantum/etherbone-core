@@ -6,7 +6,7 @@
 -- Author     : Wesley W. Terpstra
 -- Company    : GSI
 -- Created    : 2013-03-26
--- Last update: 2013-03-26
+-- Last update: 2018-03-20
 -- Platform   : FPGA-generic
 -- Standard   : VHDL'93
 -------------------------------------------------------------------------------
@@ -151,7 +151,6 @@ begin
     slave_o(i).ack <= ack(i);
     slave_o(i).err <= '0';
     slave_o(i).rty <= '0';
-    slave_o(i).int <= '0';
     slave_o(i).stall <= stall(i);
     slave_o(i).dat(word'range) <= dat4wb(i);
     slave_o(i).dat(c_wishbone_data_width-1 downto g_fifo_width) <= (others => '0');
