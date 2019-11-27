@@ -112,6 +112,9 @@ begin
         r_state      <= S_WAIT;
         r_state_next <= S_ETHERNET;
         r_count      <= f_step(c_eth_len);
+      elsif snk_i.stb = '1' and s_stall = '0' and snk_i.adr = c_WRF_STATUS and snk_i.dat(15 downto 8) /= x"80" then
+        -- if this isn't tagged as WRF packet class 7 (0x80), it's neither a broadcast, nor our own mac. Drop it.
+        r_state <= S_DROP;
       elsif snk_i.stb = '1' and s_stall = '0' and snk_i.adr = c_WRF_DATA then
       
         -- defaults
