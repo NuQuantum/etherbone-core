@@ -1,3 +1,9 @@
+etherbone (2.1.1-1) unstable; urgency=medium
+
+  * Various EBM fixes.
+
+ -- A.Hahn <a.hahn@gsi.de>  Mon, 16 Dec 2019 10:21:38 +0200
+
 etherbone (2.1.0-1) unstable; urgency=medium
 
   * Support MSI access requests.

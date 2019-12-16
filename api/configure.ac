@@ -1,7 +1,7 @@
 dnl Set these variables before each release:
 m4_define(MAJOR,2)    dnl Increment if removed/changed public symbols since previous release
 m4_define(MINOR,1)    dnl Increment if added public symbols; reset to 0 if MAJOR changed
-m4_define(REVISION,0) dnl Increment on each release; reset to 0 if MAJOR/MINOR changed
+m4_define(REVISION,1) dnl Increment on each release; reset to 0 if MAJOR/MINOR changed
 m4_define(SONAME,5)   dnl Whenever MAJOR is incremented, add MINOR+1 to this variable
 
 AC_PREREQ(2.63)
@@ -34,8 +34,8 @@ AC_PATH_PROG([UNAME], [uname], [false])
 AC_PATH_PROG([LSB_RELEASE], [lsb_release], [false])
 AC_PATH_PROG([SW_VERS], [sw_vers], [false])
 
-AC_CACHE_CHECK([for operating system], [ac_cv_OS], [AS_CASE([`${UNAME} -s`], 
-  [Linux], [AS_IF(["${LSB_RELEASE}" -d -s 2>/dev/null >/dev/null], 
+AC_CACHE_CHECK([for operating system], [ac_cv_OS], [AS_CASE([`${UNAME} -s`],
+  [Linux], [AS_IF(["${LSB_RELEASE}" -d -s 2>/dev/null >/dev/null],
                   [os=`"${LSB_RELEASE}" -d -s`; os="${os%\"}"; ac_cv_OS="${os#\"}"],
                   [AC_MSG_ERROR([lsb_release is required])])],
   [Darwin], [AS_IF(["${SW_VERS}" 2>/dev/null >/dev/null],
@@ -49,7 +49,7 @@ AC_DEFINE_UNQUOTED([USERNAME], ["${USERNAME:-${LOGNAME:-${USER:-unknown}}}"], [T
 
 AC_PATH_PROGS([DOCBOOK2MAN], [docbook2man])
 AC_PATH_PROGS([GIT], [git])
-AC_ARG_ENABLE([build-man], 
+AC_ARG_ENABLE([build-man],
   [  --enable-build-man      enable man page generation from docbook files],
   [BUILD_MAN=${enableval}], [BUILD_MAN=no])
 AM_CONDITIONAL([REBUILD_MAN_PAGES], [test \( x$DOCBOOK2MAN != x \) -a \( x$BUILD_MAN != xno \) ])
