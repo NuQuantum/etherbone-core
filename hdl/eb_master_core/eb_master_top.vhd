@@ -1,14 +1,14 @@
 --! @file eb_master_top.vhd
 --! @brief EtherBone Master (EBM) v1.2, turns Wishbone Operations into Etherbone over UDP
 --!
---! Copyright (C) 2013-2015 GSI Helmholtz Centre for Heavy Ion Research GmbH 
+--! Copyright (C) 2013-2015 GSI Helmholtz Centre for Heavy Ion Research GmbH
 --!
 --! The Hardware Etherbone Master turns Wishbone Operations into Etherbone Records,
---! creates a UDP package and sends it over a fabric interface. 
+--! creates a UDP package and sends it over a fabric interface.
 --!
 --! Before addressing a new WB device remotely, the ADR_HI register must always be set
---! to the base address of the target device. When switching between control and 
---! data adr range of the master, the cycle line MUST be lowered for at least one cycle.  
+--! to the base address of the target device. When switching between control and
+--! data adr range of the master, the cycle line MUST be lowered for at least one cycle.
 --!
 --! Wishbone Ops need to be acknowledged before a cycle ends. This is relatively easy for
 --! write operations as it can be done instantly. Read Ops, however, deliver the read data with
@@ -16,7 +16,7 @@
 --! are acknowledged at all, holding the danger of hanging the bus.
 --! Read operations are therefore expected as write operations with an address offset.
 --! EBM will analyse incoming requests and create new records accordingly. EBM record options will
---! be copied in from the EB-OPT register. 
+--! be copied in from the EB-OPT register.
 --! The  Cycle Hold bit will be kept Hi as long as Ops are written in the same Wishbone Cycle.
 --! Dropping the cycle line between Ops forces a new record and the previous record's
 --! Cycle Hold bit to go low.
@@ -27,21 +27,21 @@
 --!
 --! In case of Overflow (bytecount > MTU, Status OVF bit set), all further writes to data
 --! will cause errors. Flush will not send the data in this case, but clear the buffers instead.
---!  
---! 
---! internal address layout: 
---!     
---!  |____________________
---! 0|          |  Regs         
---!  |  ctrl    |  ...        
---!  |          |     
---!  |__________|_________
---! 1|        10|  Reads   
---!  |          |_________
---!  |  data  11|  Writes  
---!  |__________|_________ 
 --!
---! -> data address range is write only! 
+--!
+--! internal address layout:
+--!
+--!  |____________________
+--! 0|          |  Regs
+--!  |  ctrl    |  ...
+--!  |          |
+--!  |__________|_________
+--! 1|        10|  Reads
+--!  |          |_________
+--!  |  data  11|  Writes
+--!  |__________|_________
+--!
+--! -> data address range is write only!
 --! -> drop cycle before switching betwenn ctrl & data!
 --!
 
@@ -59,14 +59,14 @@
 --! but WITHOUT ANY WARRANTY; without even the implied warranty of
 --! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 --! Lesser General Public License for more details.
---!  
+--!
 --! You should have received a copy of the GNU Lesser General Public
 --! License along with this library. If not, see <http://www.gnu.org/licenses/>.
 ---------------------------------------------------------------------------------
 
 --! Standard library
 library IEEE;
---! Standard packages   
+--! Standard packages
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
@@ -87,10 +87,10 @@ port(
 
   slave_i       : in  t_wishbone_slave_in;
   slave_o       : out t_wishbone_slave_out;
-  
+
   framer_in     : out t_wishbone_slave_in; -- sim debug only, not to be connected in hardware
   framer_out    : out t_wishbone_slave_out;-- sim debug only, not to be connected in hardware
-  
+
   src_i         : in  t_wrf_source_in;
   src_o         : out t_wrf_source_out
 );
@@ -103,7 +103,7 @@ architecture rtl of eb_master_top is
 
    signal s_adr_hi         : std_logic_vector(31 downto 0);
    signal s_cfg_rec_hdr    : t_wishbone_data;
-  
+
    signal r_drain          : std_logic;
    signal s_rst_n          : std_logic;
    signal wb_rst_n         : std_logic;
@@ -113,26 +113,26 @@ architecture rtl of eb_master_top is
    signal s_his_mac,  s_my_mac  : std_logic_vector(47 downto 0);
    signal s_his_ip,   s_my_ip   : std_logic_vector(31 downto 0);
    signal s_his_port, s_my_port : std_logic_vector(15 downto 0);
-   
+
    signal s_tx_stb         : std_logic;
    signal s_clear, s_test          : std_logic;
    signal s_tx_flush       : std_logic;
    signal s_udp, r_udp_raw : std_logic;
-  
+
    signal s_skip_stb       : std_logic;
    signal s_length         : std_logic_vector(15 downto 0); -- of UDP in words
    signal s_busy : std_logic;
-   
+
    signal s_udp_raw_o   : std_logic;
    signal s_udp_we_o    : std_logic;
-   signal s_udp_valid_i : std_logic;   
+   signal s_udp_valid_i : std_logic;
    signal s_udp_data_o  : std_logic_vector(15 downto 0);
-   
+
    --wb signals
-   signal s_framer_in      : t_wishbone_slave_in; 
-   signal s_framer_out     : t_wishbone_slave_out; 
-   signal s_ctrl_in        : t_wishbone_slave_in; 
-   signal s_ctrl_out       : t_wishbone_slave_out;  
+   signal s_framer_in      : t_wishbone_slave_in;
+   signal s_framer_out     : t_wishbone_slave_out;
+   signal s_ctrl_in        : t_wishbone_slave_in;
+   signal s_ctrl_out       : t_wishbone_slave_out;
 
    signal s_narrow_in      : t_wishbone_master_out;
    signal s_narrow_out     : t_wishbone_master_in;
@@ -140,15 +140,15 @@ architecture rtl of eb_master_top is
    signal s_narrow2framer  : t_wishbone_master_in;
    signal s_narrow2tx      : t_wishbone_master_out;
    signal s_tx2narrow      : t_wishbone_master_in;
-   
-   signal cbar_slaveport_in   : t_wishbone_slave_in_array (masters-1 downto 0); 
+
+   signal cbar_slaveport_in   : t_wishbone_slave_in_array (masters-1 downto 0);
    signal cbar_slaveport_out  : t_wishbone_slave_out_array(masters-1 downto 0);
-   signal cbar_masterport_in  : t_wishbone_master_in_array (slaves-1 downto 0); 
+   signal cbar_masterport_in  : t_wishbone_master_in_array (slaves-1 downto 0);
    signal cbar_masterport_out : t_wishbone_master_out_array(slaves-1 downto 0);
-     
+
    --constant c_dat_bit : natural := t_wishbone_address'left - g_adr_bits_hi +2;
    constant c_rw_bit  : natural := t_wishbone_address'left - g_adr_bits_hi +1;
- 
+
    function f_framer_adr return std_logic_vector is
       variable ret : std_logic_vector(31 downto 0) := (others => '0');
    begin
@@ -156,7 +156,7 @@ architecture rtl of eb_master_top is
       ret(31 - g_adr_bits_hi +2) := '1';
       return ret;
    end function;
-   
+
    function f_ctrl_msk return std_logic_vector is
       variable ret : std_logic_vector(31 downto 0) := (others => '0');
    begin
@@ -164,7 +164,7 @@ architecture rtl of eb_master_top is
       ret(31 - g_adr_bits_hi +2 downto 8)  := (others => '1');
       return ret;
    end function;
-   
+
    function f_framer_msk return std_logic_vector is
       variable ret : std_logic_vector(31 downto 0) := (others => '0');
    begin
@@ -172,8 +172,8 @@ architecture rtl of eb_master_top is
       ret(31 - g_adr_bits_hi +2 downto 31 - g_adr_bits_hi +2) := ( others => '1');
       return ret;
    end function;
- 
-   constant c_ctrl_adr    : std_logic_vector(31 downto 0) := x"00000000"; 
+
+   constant c_ctrl_adr    : std_logic_vector(31 downto 0) := x"00000000";
    constant c_ctrl_msk    : std_logic_vector(31 downto 0) := f_ctrl_msk;
    constant c_framer_adr  : std_logic_vector(31 downto 0) := f_framer_adr;
    constant c_framer_msk  : std_logic_vector(31 downto 0) := f_framer_msk;
@@ -187,7 +187,7 @@ begin
 
   s_rst_n <= rst_n_i and not s_clear;
 
-  CON : xwb_crossbar 
+  CON : xwb_crossbar
   generic map(
     g_num_masters => masters,
     g_num_slaves  => slaves,
@@ -196,7 +196,7 @@ begin
     g_address(1)     => c_ctrl_adr,
     g_address(0)     => c_framer_adr,
     g_mask(1)        => c_ctrl_msk,
-    g_mask(0)        => c_framer_msk)               
+    g_mask(0)        => c_framer_msk)
   port map(
      clk_sys_i     => clk_i,
      rst_n_i       => rst_n_i,
@@ -207,16 +207,16 @@ begin
      master_i      => cbar_masterport_in,
      master_o      => cbar_masterport_out);
 
- 
-   cbar_slaveport_in(0) <= slave_i; 
-   slave_o <= cbar_slaveport_out(0);  
+
+   cbar_slaveport_in(0) <= slave_i;
+   slave_o <= cbar_slaveport_out(0);
 
    s_framer_in.cyc <= cbar_masterport_out(1).cyc;
-   s_framer_in.stb <= cbar_masterport_out(1).stb; 
-   s_framer_in.we  <= cbar_masterport_out(1).adr(c_rw_bit); 
-   s_framer_in.adr <= s_adr_hi(s_adr_hi'left downto s_adr_hi'length-g_adr_bits_hi) & cbar_masterport_out(1).adr(slave_i.adr'left-g_adr_bits_hi downto 0); 
+   s_framer_in.stb <= cbar_masterport_out(1).stb;
+   s_framer_in.we  <= cbar_masterport_out(1).adr(c_rw_bit);
+   s_framer_in.adr <= s_adr_hi(s_adr_hi'left downto s_adr_hi'length-g_adr_bits_hi) & cbar_masterport_out(1).adr(slave_i.adr'left-g_adr_bits_hi downto 0);
    s_framer_in.dat <= cbar_masterport_out(1).dat;
-   s_framer_in.sel <= cbar_masterport_out(1).sel; 
+   s_framer_in.sel <= cbar_masterport_out(1).sel;
    cbar_masterport_in(1) <= s_framer_out;
 
    s_ctrl_in <= cbar_masterport_out(0);
@@ -249,16 +249,16 @@ begin
       adr_hi_o       => s_adr_hi,
       eb_opt_o       => s_cfg_rec_hdr,
       sema_o         => open,
-      
+
       udp_raw_o(0)      => s_udp_raw_o,
       udp_data_WR_o(0)  => s_udp_we_o,
       udp_data_o        => s_udp_data_o,
-      
+
       slave_i        => s_ctrl_in,
       slave_o        => s_ctrl_out);
 
-    
-   framer: eb_framer 
+
+   framer: eb_framer
    PORT MAP (
       clk_i           => clk_i,
       rst_n_i         => s_rst_n,
@@ -274,16 +274,16 @@ begin
       busy_o          => s_busy,
 
       tx_send_now_i   => s_tx_send_now,
-      tx_flush_o      => s_tx_flush, 
+      tx_flush_o      => s_tx_flush,
       length_i        => unsigned(s_length),
-      cfg_rec_hdr_i   => f_parse_rec(s_cfg_rec_hdr));  
- 
+      cfg_rec_hdr_i   => f_parse_rec(s_cfg_rec_hdr));
+
  ---debug
   framer_in   <= s_framer_in;
   framer_out  <= s_framer_out;
- 
- 
- 
+
+
+
    narrow : eb_stream_narrow
     generic map(
       g_slave_width  => 32,
@@ -291,7 +291,7 @@ begin
     port map(
       clk_i    => clk_i,
       rst_n_i  => s_rst_n,
-      slave_i  => s_narrow_in, 
+      slave_i  => s_narrow_in,
       slave_o  => s_narrow_out,
       master_i => s_tx2narrow,
       master_o => s_narrow2tx);
@@ -302,13 +302,13 @@ begin
       s_narrow_in.sel <= (others => '1');
       s_narrow_in.we  <= '1';
       s_narrow_in.adr <= (others => '0');
-      
+
       if s_udp_raw_o = '1' then
          s_narrow_in.cyc <= s_udp_raw_o;
          s_narrow_in.stb <= s_udp_we_o;
          s_narrow_in.dat <= x"0000" & s_udp_data_o;
          s_udp_valid_i   <= s_udp_raw_o and s_udp_we_o and not s_narrow_out.stall;
-         s_narrow2framer <= ('0', '0', '0', '0', '0', (others => '0'));
+         s_narrow2framer <= ('0', '0', '0', '0', (others => '0'));
       else
          s_udp_valid_i   <= '0';
          s_narrow_in.cyc <= s_framer2narrow.cyc;
@@ -316,7 +316,7 @@ begin
          s_narrow_in.dat <= s_framer2narrow.dat;
          s_narrow2framer <= s_narrow_out;
       end if;
-   end process; 
+   end process;
    -- be careful, don't use this if you don't know what you're doing
 
    RAW_UDP : process(clk_i)
@@ -324,25 +324,25 @@ begin
       if(rising_edge(clk_i)) then
          r_udp_raw <= s_udp_raw_o;
       end if;
-   end process;  
+   end process;
 
-   s_udp <= s_udp_raw_o and not r_udp_raw; 
+   s_udp <= s_udp_raw_o and not r_udp_raw;
 
 ---TX IF
    s_tx_stb      <= s_tx_flush or s_udp;
-  
+
    tx : eb_master_eth_tx
     generic map(
       g_mtu => g_mtu)
     port map(
       clk_i        => clk_i,
       rst_n_i      => s_rst_n,
-      
+
       src_i        => src_i,
       src_o        => src_o,
       slave_o      => s_tx2narrow,
       slave_i      => s_narrow2tx,
-      
+
       stb_i        => s_tx_stb,
       stall_o      => open,
       mac_i        => s_his_mac,
