@@ -39,7 +39,7 @@ entity eb_slave_top is
     EB_RX_o     : out t_wishbone_slave_out;  --! Streaming WB sink flow control to RX transport protocol block
     EB_TX_i     : in  t_wishbone_master_in;  --! Streaming WB src flow control from TX transport protocol block
     EB_TX_o     : out t_wishbone_master_out; --! Streaming WB src to TX transport protocol block
-    
+
     skip_stb_o  : out std_logic; --! Does a packet get discarded?
     skip_stall_i: in  std_logic;
 
@@ -47,7 +47,7 @@ entity eb_slave_top is
     WB_config_o : out t_wishbone_slave_out;   --! WB V4 interface to WB interconnect/device(s)
     WB_master_i : in  t_wishbone_master_in;   --! WB V4 interface to WB interconnect/device(s)
     WB_master_o : out t_wishbone_master_out;  --! WB V4 interface to WB interconnect/device(s)
-    
+
     my_mac_o    : out std_logic_vector(47 downto 0);
     my_ip_o     : out std_logic_vector(31 downto 0);
     my_port_o   : out std_logic_vector(15 downto 0));
@@ -55,10 +55,10 @@ end eb_slave_top;
 
 architecture rtl of eb_slave_top is
   signal rstn_i : std_logic;
-  
+
   signal errreg         : std_logic_vector(63 downto 0);
   signal rx_stall       : std_logic;
-  
+
   signal fsm_tag_stb    : std_logic;
   signal fsm_tag_dat    : t_tag;
   signal tag_fsm_full   : std_logic;
@@ -71,7 +71,7 @@ architecture rtl of eb_slave_top is
   signal fsm_wbm_stb    : std_logic;
   signal wbm_fsm_full   : std_logic;
   signal wbm_fsm_busy   : std_logic;
-  
+
   signal mux_tag_pop    : std_logic;
   signal tag_mux_dat    : t_tag;
   signal tag_mux_empty  : std_logic;
@@ -84,19 +84,18 @@ architecture rtl of eb_slave_top is
   signal mux_wbm_pop    : std_logic;
   signal wbm_mux_dat    : t_wishbone_data;
   signal wbm_mux_empty  : std_logic;
-  
+
 begin
 
   rstn_i <= nRst_i;
-  
+
   EB_RX_o.ack <= EB_RX_i.cyc and EB_RX_i.stb and not rx_stall;
   EB_RX_o.err <= '0';
   EB_RX_o.rty <= '0';
-  EB_RX_o.int <= '0';
   EB_RX_o.stall <= rx_stall;
   EB_RX_o.dat <= (others => '0');
-  
-  fsm : eb_slave_fsm 
+
+  fsm : eb_slave_fsm
     port map(
       clk_i       => clk_i,
       rstn_i      => rstn_i,
@@ -122,7 +121,7 @@ begin
   EB_TX_o.we  <= '1';
   EB_TX_o.sel <= (others => '1');
   EB_TX_o.adr <= (others => '0');
-  
+
   mux : eb_tx_mux
     port map (
       clk_i        => clk_i,
