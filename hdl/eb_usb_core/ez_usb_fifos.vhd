@@ -76,12 +76,12 @@ architecture rtl of ez_usb_fifos is
   constant c_tFDH    : integer :=  10; -- FIFO DATA to SLWR hold time
   constant c_tPEpwl  : integer :=  50; -- PKTEND pulse width low
   constant c_tPEpwh  : integer :=  50; -- PKTEND pulse width high
-  
+
   type t_state is (LATCH_FLAGS,  DISPATCH,   SET_ADDR,
                    DRIVE_READ,   LATCH_DATA, IDLE_READ,
                    DRIVE_WRITE,  IDLE_WRITE, IDLE_DATA,
                    DRIVE_PKTEND, IDLE_PKTEND);
-  
+
   function f_cycles(x : integer) return integer is
   begin
     if x+g_margin <= 0 then return 1; else return (x+g_margin+g_clock_period-1)/g_clock_period; end if;
@@ -90,12 +90,12 @@ architecture rtl of ez_usb_fifos is
   begin
     return x*g_clock_period;
   end f_ns;
-  
+
   function f_max(x, y : integer) return integer is
   begin
     if x > y then return x; else return y; end if;
   end f_max;
-  
+
   -- Derive the number of cycles we stay in each state
   constant c_latch_flags  : integer := 2; -- >= 2 to synchronize async signal
   constant c_dispatch     : integer := 1;
@@ -119,16 +119,16 @@ architecture rtl of ez_usb_fifos is
                                                 f_max(c_tXFLG_e + g_board_delay*2
                                                                 - f_ns(c_drive_pktend),
                                                       c_tFAH    - f_ns(c_latch_flags+c_dispatch))));
-  
-  constant c_max_count : integer := 
-    f_max(c_latch_flags, f_max(c_dispatch,  f_max(c_set_addr,    f_max(c_drive_read, 
-    f_max(c_latch_data,  f_max(c_idle_read, f_max(c_drive_write, f_max(c_idle_write, 
+
+  constant c_max_count : integer :=
+    f_max(c_latch_flags, f_max(c_dispatch,  f_max(c_set_addr,    f_max(c_drive_read,
+    f_max(c_latch_data,  f_max(c_idle_read, f_max(c_drive_write, f_max(c_idle_write,
     f_max(c_idle_data,   f_max(c_drive_pktend, c_idle_pktend))))))))));
-  
-  
+
+
   subtype word is std_logic_vector(g_fifo_width-1 downto 0);
   type words is array(natural range <>) of word;
-  
+
   signal state    : t_state                                       := LATCH_FLAGS;
   signal notready : std_logic_vector(c_latch_flags-1 downto 0)    := (others => '1');
   signal notempty : std_logic_vector(c_latch_flags-1 downto 0)    := (others => '0');
@@ -143,7 +143,7 @@ architecture rtl of ez_usb_fifos is
   signal write    : std_logic_vector(g_num_fifos-1 downto 0)      := (others => '0');
   signal stall    : std_logic_vector(g_num_fifos-1 downto 0)      := (others => '1');
   signal ack      : std_logic_vector(g_num_fifos-1 downto 0)      := (others => '0');
-  
+
 begin
 
   -- Drive unregistered WB signals
@@ -151,14 +151,13 @@ begin
     slave_o(i).ack <= ack(i);
     slave_o(i).err <= '0';
     slave_o(i).rty <= '0';
-    slave_o(i).int <= '0';
     slave_o(i).stall <= stall(i);
     slave_o(i).dat(word'range) <= dat4wb(i);
     slave_o(i).dat(c_wishbone_data_width-1 downto g_fifo_width) <= (others => '0');
   end generate;
 
   fifoadr_o <= std_logic_vector(addr);
-  
+
   sync : process(clk_sys_i) is
   begin
     if rising_edge(clk_sys_i) then
@@ -167,7 +166,7 @@ begin
       notempty <= emptyn_i & notempty(notempty'left downto 1);
     end if;
   end process;
-  
+
   fsm : process(clk_sys_i, rstn_i) is
   begin
     if rstn_i = '0' then
@@ -182,23 +181,23 @@ begin
       write    <= (others => '0');
       stall    <= (others => '1');
       ack      <= (others => '0');
-      
+
       sloen_o   <= '1';
       slrdn_o   <= '1';
       slwrn_o   <= '1';
       pktendn_o <= '1';
-      
+
       fd_o      <= (others => '0');
       fd_oen_o  <= '0';
-      
+
     elsif rising_edge(clk_sys_i) then
       case state is
-        
+
         when LATCH_FLAGS =>
           ack(to_integer(addr)) <= '0';
-          
+
           stall(to_integer(addr)) <= request(to_integer(addr));
-          
+
           if stall  (to_integer(addr))     = '0' and
              slave_i(to_integer(addr)).cyc = '1' and
              slave_i(to_integer(addr)).stb = '1' then
@@ -207,7 +206,7 @@ begin
             write  (to_integer(addr)) <= slave_i(to_integer(addr)).we;
             dat4usb(to_integer(addr)) <= slave_i(to_integer(addr)).dat(word'range);
           end if;
-          
+
           if count /= c_latch_flags-1 then
             count <= count + 1;
           else
@@ -215,11 +214,11 @@ begin
             state <= DISPATCH;
             count <= (others => '0');
           end if;
-        
+
         when DISPATCH =>
           state <= SET_ADDR; -- default
           count <= (others => '0');
-          
+
           if request(to_integer(addr)) = '1' then
             if write(to_integer(addr)) = '1' then
               if notfull(0) = '1' and notready(0) = '0' then
@@ -237,7 +236,7 @@ begin
               state <= DRIVE_PKTEND;
             end if;
           end if;
-          
+
         when SET_ADDR =>
           if count = 0 then
             if addr = g_num_fifos-1 then
@@ -246,43 +245,43 @@ begin
               addr <= addr + 1;
             end if;
           end if;
-          
+
           if count /= c_set_addr-1 then
             count <= count + 1;
           else
             state <= LATCH_FLAGS;
             count <= (others => '0');
           end if;
-          
+
         when DRIVE_READ =>
           sloen_o <= '0';
           slrdn_o <= '0';
-          
+
           if count /= c_drive_read-1 then
             count <= count + 1;
           else
             state <= LATCH_DATA;
             count <= (others => '0');
           end if;
-          
+
         when LATCH_DATA =>
           sloen_o <= '1';
-          
+
           if count = 0 then
             fd_r <= fd_i;
           end if;
-          
+
           if count /= c_latch_data-1 then
             count <= count + 1;
           else
             state <= IDLE_READ;
             count <= (others => '0');
           end if;
-          
+
         when IDLE_READ =>
           dat4wb(to_integer(addr)) <= fd_r;
           slrdn_o <= '1';
-          
+
           if count /= c_idle_read-1 then
             count <= count + 1;
           else
@@ -290,33 +289,33 @@ begin
             count <= (others => '0');
             ack(to_integer(addr)) <= '1';
           end if;
-          
+
         when DRIVE_WRITE =>
           slwrn_o  <= '0';
           fd_oen_o <= '1';
           fd_o     <= dat4usb(to_integer(addr));
           needend(to_integer(addr)) <= '1';
-          
+
           if count /= c_drive_write-1 then
             count <= count + 1;
           else
             state <= IDLE_WRITE;
             count <= (others => '0');
           end if;
-          
+
         when IDLE_WRITE =>
           slwrn_o <= '1';
-          
+
           if count /= c_idle_write-1 then
             count <= count + 1;
           else
             state <= IDLE_DATA;
             count <= (others => '0');
           end if;
-          
+
         when IDLE_DATA =>
           fd_oen_o <= '0';
-          
+
           if count /= c_idle_data-1 then
             count <= count + 1;
           else
@@ -324,21 +323,21 @@ begin
             count <= (others => '0');
             ack(to_integer(addr)) <= '1';
           end if;
-          
+
         when DRIVE_PKTEND =>
           pktendn_o <= '0';
           needend(to_integer(addr)) <= '0';
-          
+
           if count /= c_drive_pktend-1 then
             count <= count + 1;
           else
             state <= IDLE_PKTEND;
             count <= (others => '0');
           end if;
-          
+
         when IDLE_PKTEND =>
           pktendn_o <= '1';
-          
+
           if count /= c_idle_pktend-1 then
             count <= count + 1;
           else
