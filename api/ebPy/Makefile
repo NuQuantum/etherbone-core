@@ -1,50 +1,48 @@
-EBPATH	?= /home/mkreider/projects/bel_projects/ip_cores/etherbone-core/api
-EB_LIB	=-letherbone
-EB_INCPATH	= $(EBPATH)/include
-LIBPATH	= /home/mkreider/projects/ebPy
+EB_PATH         = ..
+EB_INCPATH      = $(EB_PATH)/include
+BUILD_PATH      = .
+INC_PATH        = $(BUILD_PATH)/inc
+SRC_PATH        = $(BUILD_PATH)/src
+EB_LIB          = etherbone
 
-PREFIX	?= /usr/local
-INSTALLPATH	= $(PREFIX)/bin
+#works with python 2 and 3. Set to your python lib and include directory
+PY_LIB          = python3.6m
+PY_INCPATH      = /usr/include/python3.6m
 
-T_CXX	= g++
-T_CXXFLAGS	= -g -std=c++11 -fPIC -I$(LIBPATH) -I$(EB_INCPATH) -Wall -DETHERBONE_THROWS=1 
-SRC_FILES	= ebwrapper.cpp ebwrapper_impl.cpp
+PREFIX         ?= /usr/local
+INSTALLPATH     = $(PREFIX)/bin
 
-T_SOURCES	= $(addprefix $(SRCPATH)/, $(SRC_FILES)) 
-T_OBJECTS	= $(subst .cpp,.o,$(SRC_FILES))
-T_LIBS	= -Wl,-rpath,/usr/local/lib $(EB_LIB) 
+T_CXX           = g++
+T_CXXFLAGS      = -g -std=c++11 -fPIC -I$(INC_PATH) -I$(EB_INCPATH) -Wall -DETHERBONE_THROWS=1 
+SRC_FILES       = ebwrapper.cpp ebwrapper_impl.cpp
 
-TOOLPATH	= $(LIBPATH)
-SRCPATH = $(LIBPATH)
+T_SOURCES       = $(addprefix $(SRC_PATH)/, $(SRC_FILES)) 
+T_OBJECTS       = $(subst .cpp,.o,$(SRC_FILES))
+T_LIBS          = -Wl,-rpath,/usr/local/lib  
 
-all: lib foo
+all: lib
+
+#TODO: currently uses two shared libraries to do the PIMPL wrapping. Reduce to one.
+#(SWIG doesn't understand some of EB's datatypes and needs to be kept ignorant of the details)
 
 lib: libebwrapper.so _eb.so
 
-eb_wrap.cxx: ebwrapper.h eb.i
-	swig -Wall -c++ -python eb.i
+eb_wrap.cxx: $(INC_PATH)/ebwrapper.h eb.i
+	swig -I$(INC_PATH) -Wall -c++ -python eb.i
 
 eb_wrap.o: eb_wrap.cxx
-	$(T_CXX) $(FOO) $(T_CXXFLAGS) -c $< -o $@  -lpython2.7 -I/usr/include/python2.7/
+	$(T_CXX) $(T_CXXFLAGS) -c $< -l$(PY_LIB) -I$(PY_INCPATH)
 
-%.o: $(SRCPATH)/%.cpp
-	$(T_CXX) $(FOO) $(T_CXXFLAGS) -c $< -o $@ $(T_LIBS)
+%.o: $(SRC_PATH)/%.cpp
+	$(T_CXX) $(T_CXXFLAGS) -c $< $(T_LIBS)
 
 libebwrapper.so: $(T_OBJECTS)
-	$(T_CXX) $(T_CXXFLAGS) -shared -o $@ $^ $(T_LIBS)
+	$(T_CXX) $(T_CXXFLAGS) -shared -o $@ $^ $(T_LIBS) -l$(EB_LIB)
 
 _eb.so: $(T_OBJECTS) eb_wrap.o libebwrapper.so
-	$(T_CXX) $(T_CXXFLAGS) -shared -o $@ eb_wrap.o $(LIBPATH)/libebwrapper.so -lpython2.7 -I/usr/include/python2.7/ 
-
+	$(T_CXX) $(T_CXXFLAGS) -shared -o $@ eb_wrap.o $(BUILD_PATH)/libebwrapper.so -l$(PY_LIB) -I$(PY_INCPATH) 
 
 clean::
-	rm -f $(TOOLPATH)/*.o $(TOOLPATH)/*.a $(TOOLPATH)/*.so $(TOOLPATH)/*.elf $(TOOLPATH)/libebwrapper.so $(TOOLPATH)/_eb.so $(TOOLPATH)/foo $(TOOLPATH)/*.pyc $(TOOLPATH)/eb.py $(TOOLPATH)/eb_wrap.cxx
+	rm -rf $(T_OBJECTS) eb_wrap.o libebwrapper.so _eb.so eb_wrap.cxx eb.py eb.pyc __pycache__
 
-.SECONDEXPANSION:
-foo: main.cpp libebwrapper.so
-	$(T_CXX) $(T_CXXFLAGS) -o $@ $< $(LIBPATH)/libebwrapper.so $(T_LIBS) 
-
-
-#
-#g++ -fPIC -Wall -Wextra -shared etherbone_wrap.cxx -o _etherbone.so -lstdc++ -L. -letherbone -lpython2.7 -Wl,--verbose -I/usr/include/python2.7/
 

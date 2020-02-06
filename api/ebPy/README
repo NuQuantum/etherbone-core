@@ -1,0 +1,8 @@
+Test implementation for a Python binding for Etherbone via SWIG
+Status: Work in progress, currently minimal implementation of Etherbone features (connect/disconnect/read word/write word)
+
+Tested with both python2.7 and python3.6m. Adjust settings in Makefile accordingly
+Run very simple example: python ebtest.py
+Reads first word of LM32 RAM on a PexariaV and prints the value
+
+
