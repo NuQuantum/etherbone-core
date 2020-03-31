@@ -38,3 +38,31 @@ bool EbWrapper::EbWrapperImpl::connect(const std::string& dev) {
     ebd.read((eb_address_t)addr, EB_DATAX|EB_ADDRX, (eb_data_t*)&ret);
     return (unsigned)ret;
   }
+/*
+  void EbWrapper::EbWrapperImpl::write(const std::vector<unsigned> addr&, const std::vector<unsigned> value&) {
+    Cycle cyc;
+
+    cyc.open(ebd);
+    if addr.size() != value.size() throw std::runtime_error("Address and value vectors must be the same size");
+    for (auto& [a, v] : zip(addr, value)) {cyc.write((eb_address_t)a, EB_DATAX|EB_ADDRX, (eb_data_t)v);}
+    cyc.close();  
+  }
+
+  //std::vector<unsigned> readCycle(std::vector<unsigned> vAddr) const;
+  unsigned EbWrapper::EbWrapperImpl::read(const unsigned addr) {
+    eb_data_t ret;
+    ebd.read((eb_address_t)addr, EB_DATAX|EB_ADDRX, (eb_data_t*)&ret);
+    return (unsigned)ret;
+  }
+  */
+
+  unsigned EbWrapper::EbWrapperImpl::findById(const unsigned long vendor, const unsigned id) {
+    std::vector<struct sdb_device> devs;
+    unsigned retAdr = -1;
+    unsigned cnt = 0;
+    ebd.sdb_find_by_identity((uint64_t)vendor, (uint32_t)id, devs);
+    cnt = devs.size();
+    if (cnt > 0) retAdr = devs[0].sdb_component.addr_first;
+    return retAdr;
+            
+  }

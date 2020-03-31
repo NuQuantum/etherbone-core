@@ -35,6 +35,7 @@ public:
   void write(const unsigned addr, const unsigned value);
   //std::vector<unsigned> readCycle(std::vector<unsigned> vAddr) const;
   unsigned read(const unsigned addr);
+  unsigned findById(const unsigned long vendor, const unsigned id);
 };
 
 #endif
