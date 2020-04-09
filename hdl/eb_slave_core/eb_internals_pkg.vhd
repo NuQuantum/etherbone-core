@@ -47,7 +47,10 @@ package eb_internals_pkg is
       
       my_mac_o    : out std_logic_vector(47 downto 0);
       my_ip_o     : out std_logic_vector(31 downto 0);
-      my_port_o   : out std_logic_vector(15 downto 0));
+      my_port_o   : out std_logic_vector(15 downto 0);
+    -- MSI interface
+      msi_slave_i   : in  t_wishbone_slave_in;
+      msi_slave_o   : out t_wishbone_slave_out);
   end component;
 
   component eb_slave_fsm is
@@ -181,6 +184,10 @@ package eb_internals_pkg is
       
       cfg_i       : in  t_wishbone_slave_in;
       cfg_o       : out t_wishbone_slave_out;
+
+      -- MSI interface
+      msi_slave_i   : in  t_wishbone_slave_in;
+      msi_slave_o   : out t_wishbone_slave_out;
       
       fsm_stb_i   : in  std_logic;
       fsm_adr_i   : in  t_wishbone_address;

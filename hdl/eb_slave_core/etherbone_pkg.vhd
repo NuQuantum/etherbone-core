@@ -70,7 +70,10 @@ package etherbone_pkg is
       cfg_slave_o : out t_wishbone_slave_out;
       cfg_slave_i : in  t_wishbone_slave_in;
       master_o    : out t_wishbone_master_out;
-      master_i    : in  t_wishbone_master_in);
+      master_i    : in  t_wishbone_master_in;
+      -- MSI interface
+      msi_slave_i   : in  t_wishbone_slave_in;
+      msi_slave_o   : out t_wishbone_slave_out);
   end component;
 
   component eb_master_slave_wrapper is

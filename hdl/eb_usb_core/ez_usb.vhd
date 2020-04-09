@@ -44,6 +44,10 @@ entity ez_usb is
     master_i  : in  t_wishbone_master_in;
     master_o  : out t_wishbone_master_out;
 
+    -- MSI interface
+    msi_slave_i   : in  t_wishbone_slave_in;
+    msi_slave_o   : out t_wishbone_slave_out;
+        
     -- USB Console
     uart_o    : out std_logic;
     uart_i    : in  std_logic;
@@ -302,6 +306,9 @@ begin
       cfg_slave_o => open,
       cfg_slave_i => cc_dummy_slave_in,
       master_o    => master_o,
-      master_i    => master_i);
-
+      master_i    => master_i,
+      msi_slave_i => msi_slave_i,
+      msi_slave_o => msi_slave_o
+    );
+  
 end rtl;

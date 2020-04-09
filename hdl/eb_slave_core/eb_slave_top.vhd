@@ -50,7 +50,10 @@ entity eb_slave_top is
 
     my_mac_o    : out std_logic_vector(47 downto 0);
     my_ip_o     : out std_logic_vector(31 downto 0);
-    my_port_o   : out std_logic_vector(15 downto 0));
+    my_port_o   : out std_logic_vector(15 downto 0);
+    -- MSI interface
+    msi_slave_i   : in  t_wishbone_slave_in;
+    msi_slave_o   : out t_wishbone_slave_out);
 end eb_slave_top;
 
 architecture rtl of eb_slave_top is
@@ -176,6 +179,8 @@ begin
       errreg_i    => errreg,
       cfg_i       => WB_config_i,
       cfg_o       => WB_config_o,
+      msi_slave_i => msi_slave_i,
+      msi_slave_o => msi_slave_o,
       fsm_stb_i   => fsm_cfg_stb,
       fsm_adr_i   => fsm_cfg_adr,
       fsm_full_o  => cfg_fsm_full,

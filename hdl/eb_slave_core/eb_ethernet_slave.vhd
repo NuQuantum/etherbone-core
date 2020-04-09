@@ -117,6 +117,8 @@ begin
       EB_RX_o      => s_fsm2widen,
       EB_TX_i      => s_narrow2fsm,
       EB_TX_o      => s_fsm2narrow,
+      msi_slave_o  => open,
+      msi_slave_i  => cc_dummy_slave_in,
       skip_stb_o   => s_skip_stb,
       skip_stall_i => s_skip_stall,
       WB_config_i  => cfg_slave_i,

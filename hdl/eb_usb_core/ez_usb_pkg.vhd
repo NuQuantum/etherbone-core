@@ -35,6 +35,10 @@ package ez_usb_pkg is
        -- Wishbone interface
        master_i  : in  t_wishbone_master_in;
        master_o  : out t_wishbone_master_out;
+
+      -- MSI interface
+      msi_slave_i   : in  t_wishbone_slave_in;
+      msi_slave_o   : out t_wishbone_slave_out;
        
        -- USB Console
        uart_o    : out std_logic;

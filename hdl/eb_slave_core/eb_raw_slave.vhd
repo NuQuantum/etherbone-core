@@ -52,7 +52,11 @@ entity eb_raw_slave is
     cfg_slave_o : out t_wishbone_slave_out;
     cfg_slave_i : in  t_wishbone_slave_in;
     master_o    : out t_wishbone_master_out;
-    master_i    : in  t_wishbone_master_in);
+    master_i    : in  t_wishbone_master_in;
+    -- MSI interface
+    msi_slave_i   : in  t_wishbone_slave_in;
+    msi_slave_o   : out t_wishbone_slave_out
+    );
 end eb_raw_slave;
 
 architecture rtl of eb_raw_slave is
@@ -105,6 +109,9 @@ begin
       WB_master_o  => master_o,
       my_mac_o     => open,
       my_ip_o      => open,
-      my_port_o    => open);
+      my_port_o    => open,
+      msi_slave_i  => msi_slave_i,
+      msi_slave_o  => msi_slave_o
+      );
 
 end rtl;
