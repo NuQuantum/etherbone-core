@@ -66,6 +66,7 @@ signal s_slave_stall,
        r_slave_ack    : std_logic;
 signal send_now,
        s_tx_send_now,
+       s_not_idle,
        r_tx_send_now  : std_logic; -- queued version
 
 
@@ -223,13 +224,14 @@ begin
   
   s_tx_push       <= (tx_cyc and tx_stb and not master_i.stall);
   op_fifo_pop     <= (s_tx_push or send_now) and r_pop_cmd and not op_fifo_empty;
-  op_fifo_push    <= ((slave_i.cyc and slave_i.stb and not s_slave_stall) or s_tx_send_now) and not op_fifo_full;
+  op_fifo_push    <= ((slave_i.cyc and slave_i.stb and not s_slave_stall) or ( s_tx_send_now and s_not_idle)) and not op_fifo_full;
   op_fifo_d(31 downto 0) <= slave_i.dat when slave_i.we = '1'
                 else slave_i.adr;
   op_fifo_d(32) <= s_tx_send_now;
 
   --prolong tx_send_now if the buffer is full until it can be written
   s_tx_send_now         <= r_tx_send_now or tx_send_now_i;
+  s_not_idle            <= '0' when r_state = S_IDLE else '1';
   -- send must be in order, so it comes from the op buffer
   send_now              <= op_fifo_q(32) when op_fifo_empty = '0' else '0';
 
