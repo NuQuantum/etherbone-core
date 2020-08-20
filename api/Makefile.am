@@ -38,6 +38,8 @@ SOURCES =				\
 	glue/readwrite.c		\
 	glue/sdb.h			\
 	glue/sdb.c			\
+	glue/sdb-static.h		\
+	glue/sdb-static.c		\
 	glue/socket.h			\
 	glue/socket.c			\
 	glue/strncasecmp.h		\
