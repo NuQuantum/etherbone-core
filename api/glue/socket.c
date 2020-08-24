@@ -37,6 +37,8 @@
 #include "../memory/memory.h"
 #include "../format/format.h"
 
+#include <stdlib.h>
+
 #ifdef __WIN32
 #include <winsock2.h>
 #endif
@@ -384,24 +386,26 @@ int eb_socket_check(eb_socket_t socketp, uint32_t now, eb_user_data_t user, eb_d
   completed = 0;
   
   /* Step 1. Kill any expired timeouts */
-  while (socket->first_response != EB_NULL &&
-         eb_socket_timeout(socketp) <= now) {
-    /* Kill first */
-    responsep = socket->first_response;
-    response = EB_RESPONSE(responsep);
-    
-    cyclep = response->cycle;
-    cycle = EB_CYCLE(cyclep);
-    
-    socket->first_response = response->next;
-    
-    (*cycle->callback)(cycle->user_data, cycle->un_link.device, cycle->un_ops.first, EB_TIMEOUT);
-    socket = EB_SOCKET(socketp); /* Restore pointer */
-    
-    ++completed;
-    eb_cycle_destroy(cyclep);
-    eb_free_cycle(cyclep);
-    eb_free_response(responsep);
+  if (getenv("EB_DISABLE_ALL_TIMEOUTS") == NULL) {
+    while (socket->first_response != EB_NULL &&
+           eb_socket_timeout(socketp) <= now) {
+      /* Kill first */
+      responsep = socket->first_response;
+      response = EB_RESPONSE(responsep);
+      
+      cyclep = response->cycle;
+      cycle = EB_CYCLE(cyclep);
+      
+      socket->first_response = response->next;
+      
+      (*cycle->callback)(cycle->user_data, cycle->un_link.device, cycle->un_ops.first, EB_TIMEOUT);
+      socket = EB_SOCKET(socketp); /* Restore pointer */
+      
+      ++completed;
+      eb_cycle_destroy(cyclep);
+      eb_free_cycle(cyclep);
+      eb_free_response(responsep);
+    }
   }
   
   /* Get some memory for accepting connections */

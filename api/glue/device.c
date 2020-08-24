@@ -34,6 +34,7 @@
 #include "../transport/transport.h"
 #include "../memory/memory.h"
 #include "../format/bigendian.h"
+#include <stdlib.h>
 
 eb_status_t eb_device_open(eb_socket_t socketp, const char* address, eb_width_t proposed_widths, int attempts, eb_device_t* result) {
   eb_device_t devicep;
@@ -45,7 +46,7 @@ eb_status_t eb_device_open(eb_socket_t socketp, const char* address, eb_width_t 
   struct eb_socket* socket;
   struct eb_socket_aux* aux;
   eb_status_t status;
-  
+
   devicep = eb_new_device();
   if (devicep == EB_NULL) {
     *result = EB_NULL;
@@ -132,7 +133,12 @@ eb_status_t eb_device_open(eb_socket_t socketp, const char* address, eb_width_t 
       *(uint32_t*)(buf+4) = htobe32((uint32_t)(uintptr_t)devicep);
       eb_transports[transport->link_type].send(transport, link, buf, sizeof(buf));
       
-      timeout = 3000000; /* 3 seconds */
+
+      if (getenv("EB_DISABLE_ALL_TIMEOUTS") != NULL) {
+        timeout = 30000000;
+      } else {
+        timeout = 3000000; /* 3 seconds */
+      }
       while (timeout > 0 && device->link != EB_NULL && device->widths == 0) {
         got = eb_socket_run(socketp, timeout); /* Invalidates all pointers */
         timeout -= got;

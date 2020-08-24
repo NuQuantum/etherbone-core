@@ -244,24 +244,78 @@ struct sdb_static_crossbar* sdb_static_crossbar_from_file(const char* filename_p
 }
 
 
-struct sdb_device* sdb_static_find_by_identity(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id) {
+// struct sdb_device* sdb_static_find_by_identity(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id) {
 
+// 	for (int i = 0; i < crossbar->num_records; ++i) {
+// 		printf("sdb_static_find_by_identity record[%d].type = %x\n", i, crossbar->records[i].device.sdb_component.product.record_type);
+// 		if (crossbar->records[i].device.sdb_component.product.vendor_id == vendor_id &&
+// 			crossbar->records[i].device.sdb_component.product.device_id == device_id &&
+// 			crossbar->records[i].device.sdb_component.product.record_type == 0x01) {
+// 			// correct device found
+// 			struct sdb_device *result = &crossbar->records[i].device;
+// 			return result;
+// 		} else if (crossbar->records[i].device.sdb_component.product.record_type == 0x02) {
+// 			// bridge found
+// 			struct sdb_static_crossbar * child = (struct  sdb_static_crossbar*)crossbar->records[i].bridge.sdb_child;
+// 			struct sdb_device *result = sdb_static_find_by_identity(child, vendor_id, device_id);
+// 			if (result) {
+// 				return result;
+// 			}
+// 		}
+// 	}
+// 	return NULL;
+// }
+
+eb_status_t sdb_static_find_by_identity(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id, struct sdb_device *output, int *devices) {
+	int capacity = *devices;
+	*devices = 0;
 	for (int i = 0; i < crossbar->num_records; ++i) {
-		printf("sdb_static_find_by_identity record[%d].type = %x\n", i, crossbar->records[i].device.sdb_component.product.record_type);
+		// printf("sdb_find_by_identity record[%d].type = %x\n", i, crossbar->records[i].device.sdb_component.product.record_type);
 		if (crossbar->records[i].device.sdb_component.product.vendor_id == vendor_id &&
 			crossbar->records[i].device.sdb_component.product.device_id == device_id &&
 			crossbar->records[i].device.sdb_component.product.record_type == 0x01) {
 			// correct device found
-			struct sdb_device *result = &crossbar->records[i].device;
-			return result;
+			// printf("found device capacity = %d  *devices = %d\n", capacity, *devices);
+			if (capacity > 0) {
+				*output = crossbar->records[i].device;
+				// print_sdb_device(crossbar->records[i].device);
+				++output;
+				--capacity;
+			}
+			++*devices;
 		} else if (crossbar->records[i].device.sdb_component.product.record_type == 0x02) {
 			// bridge found
-			struct sdb_static_crossbar * child = (struct  sdb_static_crossbar*)crossbar->records[i].bridge.sdb_child;
-			struct sdb_device *result = sdb_static_find_by_identity(child, vendor_id, device_id);
-			if (result) {
-				return result;
-			}
+			struct sdb_static_crossbar * child = (struct sdb_static_crossbar*)crossbar->records[i].bridge.sdb_child;
+			// call the function with the output pointer moved forward by the number of already found devices
+			int capacity_recursive = capacity;
+			sdb_static_find_by_identity(child, vendor_id, device_id, output, &capacity_recursive);
+			// printf("found %d devices in recursive call\n", capacity_recursive);
+			// capacity contains number of devices found after function call
+			*devices += capacity_recursive;
 		}
 	}
-	return NULL;
+	return EB_OK;
+}
+
+eb_status_t sdb_static_find_by_identity_msi(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id, struct sdb_device *output, eb_address_t* output_msi_first, eb_address_t* output_msi_last, int *devices) {
+	int capacity = *devices;
+	eb_address_t msi_first, msi_last;
+	sdb_static_find_by_identity(crossbar, vendor_id, device_id, output, devices);
+	// in order to find msi_first and msi_last, just take sdb_componnen.addr_fist and 
+	// sdb_component.addr_last from the first .msi record found... don't know if that is always correct...
+	for (int i = 0; i < crossbar->num_records; ++i) {
+		// printf("sdb_find_by_identity record[%d].type = %x\n", i, crossbar->records[i].device.sdb_component.product.record_type);
+		if (crossbar->records[i].device.sdb_component.product.record_type == 0x03) {
+			// correct device found
+			// printf("found device capacity = %d  *devices = %d\n", capacity, *devices);
+			msi_first = crossbar->records[i].msi.sdb_component.addr_first;
+			msi_last  = crossbar->records[i].msi.sdb_component.addr_last;
+			break;
+		}
+	}
+	for (int i = 0; i < capacity && i < *devices; ++i ) {
+		output_msi_first[i] = msi_first;
+		output_msi_last[i] = msi_last;
+	}
+	return EB_OK;
 }

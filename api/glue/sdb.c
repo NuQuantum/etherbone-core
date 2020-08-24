@@ -33,8 +33,11 @@
 #include "version.h"
 #include "../format/bigendian.h"
 #include "../memory/memory.h"
-
 #include <string.h>
+
+#include "sdb-static.h"
+#include <stdlib.h>
+#include <stdio.h>
 
 #define SDB_MAGIC 0x5344422D
 
@@ -839,14 +842,43 @@ static eb_status_t eb_sdb_find_by_identity_real(
   }
   
   *devices = record.fill_output;
+  // intercept all timeouts if this environment variable is set
+  const char *eb_disable_all_timeouts = getenv("EB_DISABLE_ALL_TIMEOUTS");
+  if (eb_disable_all_timeouts != NULL && record.status == EB_TIMEOUT) {
+      return EB_OK;
+  }  
   return record.status;
 }
 
 eb_status_t eb_sdb_find_by_identity_msi(eb_device_t device, uint64_t vendor_id, uint32_t device_id, struct sdb_device* output, eb_address_t* output_msi_first, eb_address_t* output_msi_last, int* devices) {
+  const char* sdb_static_base_name = getenv("EB_SDB_STATIC_BASE_NAME");
+  const char* sdb_static_base_addr = getenv("EB_SDB_STATIC_BASE_ADDR");
+  if (sdb_static_base_name != NULL) {
+    eb_address_t base_addr = 0;
+    if (sdb_static_base_addr != NULL) {
+      sscanf(sdb_static_base_addr, "%lx", &base_addr);
+    }
+    // leak!!
+    struct sdb_static_crossbar *sdb_crossbar = sdb_static_crossbar_from_file(sdb_static_base_name, base_addr);
+    // call static version of sdb_find_by_identity_msi
+    return sdb_static_find_by_identity_msi(sdb_crossbar, vendor_id, device_id, output, output_msi_first, output_msi_last, devices);
+  }
   return eb_sdb_find_by_identity_real(device, vendor_id, device_id, 0, 0, 0, output, output_msi_first, output_msi_last, devices, *devices);
 }
 
 eb_status_t eb_sdb_find_by_identity(eb_device_t device, uint64_t vendor_id, uint32_t device_id, struct sdb_device* output, int* devices) {
+  const char* sdb_static_base_name = getenv("EB_SDB_STATIC_BASE_NAME");
+  const char* sdb_static_base_addr = getenv("EB_SDB_STATIC_BASE_ADDR");
+  if (sdb_static_base_name != NULL) {
+    eb_address_t base_addr = 0;
+    if (sdb_static_base_addr != NULL) {
+      sscanf(sdb_static_base_addr, "%lx", &base_addr);
+    }
+    // leak!!
+    struct sdb_static_crossbar *sdb_crossbar = sdb_static_crossbar_from_file(sdb_static_base_name, base_addr);
+    // call static version of sdb_find_by_identity
+    return sdb_static_find_by_identity(sdb_crossbar, vendor_id, device_id, output, devices);
+  }
   return eb_sdb_find_by_identity_real(device, vendor_id, device_id, 0, 0, 0, output, 0, 0, devices, 0);
 }
 

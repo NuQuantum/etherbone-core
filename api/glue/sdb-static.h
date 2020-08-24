@@ -40,7 +40,8 @@ struct sdb_static_crossbar {
 };
 
 EB_PRIVATE struct sdb_static_crossbar* sdb_static_crossbar_from_file(const char* filename_prefix, uint32_t sdb_addr);
-EB_PRIVATE struct sdb_device*          sdb_static_find_by_identity(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id);
+EB_PRIVATE eb_status_t sdb_static_find_by_identity(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id, struct sdb_device *output, int *devices);
+EB_PRIVATE eb_status_t sdb_static_find_by_identity_msi(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id, struct sdb_device *output, eb_address_t* output_msi_first, eb_address_t* output_msi_last, int *devices);
 
 
 EB_PRIVATE void print_sdb_device(struct sdb_device device);
