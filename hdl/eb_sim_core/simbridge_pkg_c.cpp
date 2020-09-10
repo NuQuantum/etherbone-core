@@ -33,6 +33,11 @@ class EBslave
 {
 public:
 	void init() {
+		wb_stbs.clear();
+		wb_wait_for_acks.clear();
+		input_word_buffer.clear();
+		output_word_buffer.clear();
+
 		pfds[0].fd = open("/dev/ptmx", O_RDWR );//| O_NONBLOCK);
 
 		// put it in raw mode
@@ -68,6 +73,7 @@ public:
 				return;
 			}
 		}
+		word_count = 0;
 		grantpt(pfds[0].fd);
 		unlockpt(pfds[0].fd);
 		state = EB_SLAVE_STATE_IDLE;
@@ -89,7 +95,7 @@ public:
 	}
 
 
-	EBslave(bool stop_until_connected, uint32_t sdb_adr = 0x0) 
+	EBslave(bool stop_until_connected, uint32_t sdb_adr) 
 	{
 		_stop_until_connected = stop_until_connected;
 		eb_sdb_adr = sdb_adr;
@@ -102,77 +108,52 @@ public:
 
 
 	void fill_input_buffer() {
-		// for (;;) {
-			// pfds[0].events = POLLIN;
-			// int timeout_ms = 0;
-			// int result = poll(pfds,1,timeout_ms); 
-			// if (result == 0) {
-			// 	//timeout -> nothing to read
-			// 	break;
-			// } else if (result == 1) {
-				// if (pfds[0].revents == POLLHUP) {
-				// 	state = EB_SLAVE_STATE_IDLE;
-				// 	input_word_buffer.clear();
-				// 	std::cerr << "client disconnected" << std::endl;
-				// 	exit(1);
-				// } 
-				uint8_t buffer[1024];
-				uint8_t *value;
-				// for (int i = 0; i < 4; ++i) {
-					pfds[0].events = POLLIN;
-					int timeout_ms = 0;
-					int result = poll(pfds,1,timeout_ms);
-					if (result != 1) {
-						return;
-					}
-					if (pfds[0].revents == POLLHUP) {
-						close(pfds[0].fd);
-						pfds[0].fd = 0;
-						// exit(1);
-						init();
-						return;
-					}
-					// if (pfds[0].revents != POLLIN) {
-					// 	std::cerr << "this shouldn't happen!!" << std::endl;
-					// } 
-					result = read(pfds[0].fd, (void*)buffer, sizeof(buffer));
-					if (result == -1 && errno == EAGAIN) {
-						return;
-					} else if (result == -1) {
-						std::cerr << "unexpected error " << errno << " " << strerror(errno) << std::endl;
-						switch(errno) {
-							case EBADF:  std::cerr << "EBADF" << std::endl; break;
-							case EFAULT: std::cerr << "EFAULT" << std::endl; break;
-							case EINTR:  std::cerr << "EINTR" << std::endl; break;
-							case EINVAL: std::cerr << "EINVAL" << std::endl; break;
-							case EIO:    std::cerr << "EIO" << std::endl; break;
-							case EISDIR: std::cerr << "EISDIR" << std::endl; break;
-						}
-						//sleep(2);
-						//exit(1);
-						close(pfds[0].fd);
-						pfds[0].fd = 0;
-						init();
+		uint8_t buffer[1024];
+		uint8_t *value;
+		pfds[0].events = POLLIN;
+		int timeout_ms = 0;
+		int result = poll(pfds,1,timeout_ms);
+		if (result != 1) {
+			return;
+		}
+		if (pfds[0].revents == POLLHUP) {
+			close(pfds[0].fd);
+			pfds[0].fd = 0;
+			// exit(1);
+			init();
+			return;
+		}
+		result = read(pfds[0].fd, (void*)buffer, sizeof(buffer));
+		if (result == -1 && errno == EAGAIN) {
+			return;
+		} else if (result == -1) {
+			std::cerr << "unexpected error " << errno << " " << strerror(errno) << std::endl;
+			switch(errno) {
+				case EBADF:  std::cerr << "EBADF" << std::endl; break;
+				case EFAULT: std::cerr << "EFAULT" << std::endl; break;
+				case EINTR:  std::cerr << "EINTR" << std::endl; break;
+				case EINVAL: std::cerr << "EINVAL" << std::endl; break;
+				case EIO:    std::cerr << "EIO" << std::endl; break;
+				case EISDIR: std::cerr << "EISDIR" << std::endl; break;
+			}
+			close(pfds[0].fd);
+			pfds[0].fd = 0;
+			init();
 
-					} else if (result >= 4) {
-						value = buffer;
-						while (result > 0) {
-							uint32_t value32  = value[0]; value32 <<=8;
-							         value32 |= value[1]; value32 <<=8;
-							         value32 |= value[2]; value32 <<=8;
-							         value32 |= value[3]; 
-							std::cerr << "<= 0x" << std::hex << std::setw(8) << std::setfill('0') << (uint32_t)value32 << std::endl;
-							input_word_buffer.push_back(value32);
-							result -= 4;
-							value  += 4; 
-							++word_count;
-						}
-					}
-				// }
-		// 	} else {
-		// 		break;
-		// 	} 
-		// }		
+		} else if (result >= 4) {
+			value = buffer;
+			while (result > 0) {
+				uint32_t value32  = value[0]; value32 <<=8;
+				         value32 |= value[1]; value32 <<=8;
+				         value32 |= value[2]; value32 <<=8;
+				         value32 |= value[3]; 
+				std::cerr << "<= 0x" << std::hex << std::setw(8) << std::setfill('0') << (uint32_t)value32 << std::endl;
+				input_word_buffer.push_back(value32);
+				result -= 4;
+				value  += 4; 
+				++word_count;
+			}
+		}
 	}
 	// return true if a word is available
 	// return false if there is nothing
@@ -193,7 +174,7 @@ public:
 
 
 	void control_out(std_logic_t *cyc, std_logic_t *stb, std_logic_t *we, int *adr, int *dat, int *sel) {
-		// std::cerr << "out" << std::endl;
+		// std::cerr << "out " << state << std::endl;
 
 		// std::cerr << "control_out" << std::endl;
 		*cyc = STD_LOGIC_0;
@@ -208,10 +189,8 @@ public:
 			case EB_SLAVE_STATE_IDLE:
 				if (next_word(word)) {
 					if (word == 0x4e6f11ff) {
-						// output_word_buffer.push_back(0x4e6f1644);
 						wb_stbs.push_back(wb_stb(0,0x4e6f1644,false,true)); // not a real strobe, just a pass-through
 						if (next_word(word)) {
-							// output_word_buffer.push_back(word); // echo the 2nd word
 							wb_stbs.push_back(wb_stb(0,word,false,true)); // not a real strobe, just a pass-through
 							state = EB_SLAVE_STATE_EB_HEADER;
 						}
@@ -219,7 +198,6 @@ public:
 				}
 			break;
 			case EB_SLAVE_STATE_EB_HEADER:
-				new_header_countdown = 0;
 				if (next_word(word)) { // eb record header
 					eb_flag_bca = word & 0x80000000;
 					eb_flag_rca = word & 0x40000000;
@@ -236,12 +214,10 @@ public:
 					         response |= (eb_flag_cyc << 27); // response rca <= request bca
 					         response |= (eb_flag_bca << 26); // response rff <= request rff
 					         response |= (eb_flag_rff << 25); // response wca <= request wca;
-					// output_word_buffer.push_back(response);
 
 					// if we have a write request, the response must be zero and a new header has to be inserted 
 					// in front of the read response (if there was any read request)
 					if (eb_wcount > 0) {
-						new_header_countdown = eb_wcount;
 						new_header = response & 0xffffff00; // delete the read count;
 						response = 0;
 					}
@@ -267,14 +243,12 @@ public:
 				if (eb_wcount > 0) {
 					uint32_t base_write_adr;
 					if (next_word(base_write_adr)) {
-						// output_word_buffer.push_back(base_write_adr);
 						wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
 						state = EB_SLAVE_STATE_EB_CONFIG_REST;
 					}
 				} else if (eb_rcount > 0) {
 					uint32_t base_ret_adr;
 					if (next_word(base_ret_adr)) {
-						// output_word_buffer.push_back(base_ret_adr);
 						wb_stbs.push_back(wb_stb(base_ret_adr,base_ret_adr,false,true)); // not a real strobe, just a pass-through
 						state = EB_SLAVE_STATE_EB_CONFIG_REST;
 					}
@@ -287,15 +261,11 @@ public:
 					uint32_t write_val;
 					if (next_word(write_val)) {
 						--eb_wcount;
-						// TODO ... do something with write_val
-						// output_word_buffer.push_back(write_val);
-						--new_header_countdown;
-						if (new_header_countdown == 0) {
+						if (eb_wcount == 0) {
 							wb_stbs.push_back(wb_stb(new_header,new_header,false,true)); // not a real strobe, just a pass-through
 						} else {
 							wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
 						}
-						// error_shift_reg = (error_shift_reg << 1) | 0x0;
 						if (eb_wcount == 0) {
 							if (eb_rcount == 0) {
 								state = EB_SLAVE_STATE_EB_HEADER;
@@ -310,22 +280,23 @@ public:
 						--eb_rcount;
 						uint32_t err = 0x0;
 						switch(read_adr) {
-							case 0x0: //output_word_buffer.push_back(error_shift_reg);
+							case 0x0: 
 								wb_stbs.push_back(wb_stb(error_shift_reg,error_shift_reg,false,true)); // not a real strobe, just a pass-through
 								error_shift_reg = 0; // clear the error shift register 
 							break;
-							case 0x8: //output_word_buffer.push_back(eb_sdb_adr);
+							case 0x8: 
+								// is sdb_adr here ...
+								std::cerr << "access to sdb_adr : " << eb_sdb_adr << std::endl;
 								wb_stbs.push_back(wb_stb(eb_sdb_adr,eb_sdb_adr,false,true)); // not a real strobe, just a pass-through
 							break;
-							case 0xc: //output_word_buffer.push_back(0x100); // just hardcoded for now
-								wb_stbs.push_back(wb_stb(0x100,0x100,false,true)); // not a real strobe, just a pass-through
+							case 0xc: 
+							    // ... or here ????
+								wb_stbs.push_back(wb_stb(eb_sdb_adr,eb_sdb_adr,false,true)); // not a real strobe, just a pass-through
 							break;
-							default: //output_word_buffer.push_back(0x0); // answer with 0 ...
+							default: 
 								wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
 								wb_stbs.back().err = true;
-								// err = 0x1; // ... and put an error in the shift register
 						}
-						// error_shift_reg = (error_shift_reg << 1) | 0x0;
 						if (eb_rcount == 0) {
 							state = EB_SLAVE_STATE_EB_HEADER;
 						}
@@ -355,10 +326,9 @@ public:
 					uint32_t write_val;
 					if (next_word(write_val)) {
 						--eb_wcount;
-						--new_header_countdown;
 						// put the write strobe into the queue
 						wb_stbs.push_back(wb_stb(base_write_adr,write_val,true));
-						if (new_header_countdown == 0) {
+						if (eb_wcount == 0) {
 							wb_stbs.back().new_header = true;
 						} else {
 							wb_stbs.back().zero = true;
@@ -412,7 +382,6 @@ public:
 			if (wb_stbs.front().we) {
 				*we = STD_LOGIC_1;
 				write_enable = true;
-				// std::cerr << "write " << wb_stbs.front().dat << " to slave " << wb_stbs.front().adr << std::endl;
 			} else {
 				*we = STD_LOGIC_0;
 			}
@@ -425,10 +394,12 @@ public:
 	}
 
 	void handle_pass_through() {
+		// std::cerr << "handle_pass_through " << wb_stbs.size() << std::endl;
 		while(wb_stbs.size() > 0 && wb_stbs.front().passthrough) {
 			wb_wait_for_acks.push_back(wb_stbs.front());
 			wb_stbs.pop_front();
 		}
+		// std::cerr << "handle_pass_through " << wb_wait_for_acks.size() << std::endl;
 		// remove all pass-through values
 		while (wb_wait_for_acks.size() > 0 && wb_wait_for_acks.front().passthrough) {
 			// std::cerr << "pass-through" << std::endl;
@@ -437,14 +408,14 @@ public:
 			error_shift_reg = (error_shift_reg << 1) | err;
 			wb_wait_for_acks.pop_front();
 		}
+		// std::cerr << "handle_pass_through " << output_word_buffer.size() << std::endl;
 
 	}
 
 	void send_output_buffer()
 	{
-
+		// std::cerr << "send_output_buffer " << wb_wait_for_acks.size() << " " << output_word_buffer.size() << " " << word_count << std::endl;
 		if (wb_wait_for_acks.size() == 0 && output_word_buffer.size() >= word_count) {
-			// std::cerr << "output_word_buffer.size() = " << output_word_buffer.size() << std::endl;
 			std::vector<uint8_t> write_buffer;
 			while (output_word_buffer.size() > 0) {
 				--word_count;
@@ -530,7 +501,6 @@ private:
 
 	bool strobe;
 
-	int new_header_countdown;
 	uint32_t new_header;
 
 	struct wb_stb {
@@ -553,16 +523,17 @@ private:
 
 
 
+
 EBslave *slave;
 
 extern "C" 
-void eb_slave_init(char stop_until_connected) {
-	slave = new EBslave(stop_until_connected);
+void eb_simbridge_init(int stop_until_connected, int sdb_adr) {
+	slave = new EBslave(stop_until_connected, sdb_adr);
 }
 
 
 extern "C" 
-void eb_slave_control_out(char *cyc, char *stb, char *we, int *adr, int *dat, int *sel)
+void eb_simbridge_control_out(char *cyc, char *stb, char *we, int *adr, int *dat, int *sel)
 {
 	std_logic_t _cyc, _stb, _we;
 	slave->control_out(&_cyc,&_stb,&_we,adr,dat,sel);
@@ -571,7 +542,7 @@ void eb_slave_control_out(char *cyc, char *stb, char *we, int *adr, int *dat, in
 	*we  = (char)_we;
 }
 extern "C" 
-void eb_slave_control_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat)
+void eb_simbridge_control_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat)
 {
 	// std::cerr << "in" << std::endl;
 	slave->control_in(ack,err,rty,stall,dat);

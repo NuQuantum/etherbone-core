@@ -2,10 +2,12 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use work.wishbone_pkg.all;
-use work.file_access.all; 
 use work.simbridge_pkg.all;
 
 entity simbridge is
+  generic (
+      g_sdb_address    : t_wishbone_address
+    );
   port (
   clk_i    : in  std_logic;
   rstn_i   : in  std_logic;
@@ -21,6 +23,7 @@ begin
     variable master_o_dat,master_o_adr,master_o_sel : integer;
     variable master_i_ack,master_i_err,master_i_rty,master_i_stall : std_logic;
     variable master_i_dat                                          : integer;
+    constant stop_until_connected : integer := 1;
   begin
     master_o.cyc <= '0';
     master_o.stb <= '0';
@@ -31,11 +34,11 @@ begin
 
     wait until rising_edge(rstn_i);
     wait until rising_edge(clk_i);
-    eb_slave_init(true);
+    eb_simbridge_init(stop_until_connected, to_integer(signed(g_sdb_address)));
     while true loop
 
       wait until rising_edge(clk_i);
-      eb_slave_control_out(master_o_cyc,master_o_stb,master_o_we,master_o_adr,master_o_dat,master_o_sel);
+      eb_simbridge_control_out(master_o_cyc,master_o_stb,master_o_we,master_o_adr,master_o_dat,master_o_sel);
       master_o.cyc <= master_o_cyc;
       master_o.stb <= master_o_stb;
       master_o.we  <= master_o_we;
@@ -49,7 +52,7 @@ begin
       master_i_rty := master_i.rty;
       master_i_stall := master_i.stall;
       master_i_dat := to_integer(signed(master_i.dat));
-      eb_slave_control_in(master_i_ack,master_i_err,master_i_rty,master_i_stall,master_i_dat);
+      eb_simbridge_control_in(master_i_ack,master_i_err,master_i_rty,master_i_stall,master_i_dat);
       
     end loop;
   end process;
