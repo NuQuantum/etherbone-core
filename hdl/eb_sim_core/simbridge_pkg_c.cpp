@@ -95,10 +95,12 @@ public:
 	}
 
 
-	EBslave(bool stop_until_connected, uint32_t sdb_adr) 
+	EBslave(bool stop_until_connected, uint32_t sdb_adr, uint32_t msi_addr_first, uint32_t msi_addr_last) 
 	{
 		_stop_until_connected = stop_until_connected;
-		eb_sdb_adr = sdb_adr;
+		eb_sdb_adr       = sdb_adr;
+		eb_msi_adr_first = msi_addr_first;
+		eb_msi_adr_last  = msi_addr_last;
 		init();
 	}
 
@@ -173,7 +175,7 @@ public:
 	}
 
 
-	void control_out(std_logic_t *cyc, std_logic_t *stb, std_logic_t *we, int *adr, int *dat, int *sel) {
+	void master_out(std_logic_t *cyc, std_logic_t *stb, std_logic_t *we, int *adr, int *dat, int *sel) {
 		// std::cerr << "out " << state << std::endl;
 
 		// std::cerr << "control_out" << std::endl;
@@ -199,12 +201,12 @@ public:
 			break;
 			case EB_SLAVE_STATE_EB_HEADER:
 				if (next_word(word)) { // eb record header
-					eb_flag_bca = word & 0x80000000;
-					eb_flag_rca = word & 0x40000000;
-					eb_flag_rff = word & 0x20000000;
-					eb_flag_cyc = word & 0x08000000;
-					eb_flag_wca = word & 0x04000000;
-					eb_flag_wff = word & 0x02000000;
+					eb_flag_bca =  word & 0x80000000;
+					eb_flag_rca =  word & 0x40000000;
+					eb_flag_rff =  word & 0x20000000;
+					eb_flag_cyc =  word & 0x08000000;
+					eb_flag_wca =  word & 0x04000000;
+					eb_flag_wff =  word & 0x02000000;
 					eb_byte_en  = (word & 0x00ff0000) >> 16;
 					eb_wcount   = (word & 0x0000ff00) >>  8;
 					eb_rcount   = (word & 0x000000ff) >>  0;
@@ -293,6 +295,47 @@ public:
 							    // ... or here ????
 								wb_stbs.push_back(wb_stb(eb_sdb_adr,eb_sdb_adr,false,true)); // not a real strobe, just a pass-through
 							break;
+							case 0x2c: 
+								wb_stbs.push_back(wb_stb(0x1,0x1,false,true)); // not a real strobe, just a pass-through
+							break;
+							case 0x34:
+								wb_stbs.push_back(wb_stb(eb_msi_adr_first,eb_msi_adr_first,false,true)); // not a real strobe, just a pass-through
+							break;
+							case 0x3c:
+								wb_stbs.push_back(wb_stb(eb_msi_adr_last,eb_msi_adr_last,false,true)); // not a real strobe, just a pass-through
+							break;
+							case 0x40: // msi_adr
+								if (msi_queue.size() > 0) {
+									msi_adr = msi_queue.front().adr;
+									msi_dat = msi_queue.front().dat;
+									msi_cnt = 1;
+									if (msi_queue.size() > 1) {
+										msi_cnt = 3;
+									}
+								} else {
+									msi_cnt = 0;
+								}
+								wb_stbs.push_back(wb_stb(msi_adr,msi_adr,false,true)); // not a real strobe, just a pass-through
+							break;
+							case 0x44: // msi_dat
+								wb_stbs.push_back(wb_stb(msi_dat,msi_dat,false,true)); // not a real strobe, just a pass-through
+							break;
+							case 0x48:
+								wb_stbs.push_back(wb_stb(msi_cnt,msi_cnt,false,true)); // not a real strobe, just a pass-through
+							break;
+
+    // x"00000000"                                      when "01000", -- 0x20 = 0[010 00]00
+    // x"00000000"                                      when "01001", -- 0x24 = 0[010 01]00
+    // x"00000000"                                      when "01010", -- 0x28
+    // x"00000001"                                      when "01011", -- 0x2c
+    // x"00000000"                                      when "01100", -- 0x30
+    // c_ebs_msi.sdb_component.addr_first(31 downto  0) when "01101", -- 0x34
+    // x"00000000"                                      when "01110", -- 0x38
+    // c_ebs_msi.sdb_component.addr_last(31 downto  0)  when "01111", -- 0x3c
+    // msi_adr                                          when "10000", -- 0x40 = 0[100 00]00
+    // msi_dat                                          when "10001", -- 0x44 = 0[100 01]00
+    // msi_cnt                                          when "10010", -- 0x48 = 0[100 10]00
+    // x"00000000"                                      when others;
 							default: 
 								wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
 								wb_stbs.back().err = true;
@@ -308,7 +351,8 @@ public:
 				if (eb_wcount > 0) {
 					if (next_word(base_write_adr)) {
 						// output_word_buffer.push_back(base_write_adr);
-						wb_stbs.push_back(wb_stb(base_write_adr,base_write_adr,false,true)); // not a real strobe, just a pass-through
+						wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
+						// wb_stbs.back().zero = true;
 						state = EB_SLAVE_STATE_EB_WISHBONE_REST;
 					}
 				} else if (eb_rcount > 0) {
@@ -330,6 +374,7 @@ public:
 						wb_stbs.push_back(wb_stb(base_write_adr,write_val,true));
 						if (eb_wcount == 0) {
 							wb_stbs.back().new_header = true;
+							wb_stbs.back().new_header_value = new_header;
 						} else {
 							wb_stbs.back().zero = true;
 						}
@@ -434,7 +479,7 @@ public:
 	}
 
 	// should be called on falling_edge(clk)
-	void control_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat) {
+	void master_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat) {
 		// std::cerr << "in" << std::endl;
 		// std::cerr << "control_in wb_stbs.size() = " << std::dec << (int)wb_stbs.size() << std::endl;
 		handle_pass_through();
@@ -447,7 +492,7 @@ public:
 				if (wb_wait_for_acks.front().zero) {
 					output_word_buffer.push_back(0x0);
 				} else if (wb_wait_for_acks.front().new_header) {
-					output_word_buffer.push_back(new_header);
+					output_word_buffer.push_back(wb_wait_for_acks.front().new_header_value);
 				} else {
 					output_word_buffer.push_back(wb_wait_for_acks.front().dat);
 				}
@@ -465,6 +510,31 @@ public:
 
 	}
 
+
+
+	void msi_slave_out(std_logic_t *ack, std_logic_t *err, std_logic_t *rty, std_logic_t *stall, int *dat) {
+		*ack = STD_LOGIC_0;
+		*err = STD_LOGIC_0;
+		*rty = STD_LOGIC_0;
+		*stall = STD_LOGIC_0;
+		if (msi_slave_out_ack) *ack = STD_LOGIC_1;
+		if (msi_slave_out_err) *err = STD_LOGIC_1;
+		*dat = 0x0;
+	}
+
+	void msi_slave_in(std_logic_t cyc, std_logic_t stb, std_logic_t we, int adr, int dat, int sel) {
+		msi_slave_out_ack = false;
+		msi_slave_out_err = false;
+		if (cyc == STD_LOGIC_1 && stb == STD_LOGIC_1) {
+			if (we == STD_LOGIC_1) {
+				msi_slave_out_ack = true;
+				msi_queue.push_back(MSI(adr,dat));
+				// ignore sel
+			} else {
+				msi_slave_out_err = true; // msi_slave is write-only!
+			}
+		} 
+	}
 
 private:
 	struct pollfd pfds[1];	
@@ -484,6 +554,21 @@ private:
 
 	uint32_t error_shift_reg;
 	uint32_t eb_sdb_adr;
+	uint32_t eb_msi_adr_first;
+	uint32_t eb_msi_adr_last;
+
+	bool msi_slave_out_ack;
+	bool msi_slave_out_err;
+
+	struct MSI {
+		MSI(uint32_t a, uint32_t d) : adr(a), dat(d) {}
+		uint32_t adr;
+		uint32_t dat;
+	};
+	std::deque<MSI> msi_queue;
+	uint32_t msi_adr;
+	uint32_t msi_dat;
+	uint32_t msi_cnt;
 
 
 	// state machine of the EB-slave
@@ -512,6 +597,7 @@ private:
 		bool passthrough;
 		bool zero;
 		bool new_header;
+		uint32_t new_header_value;
 		wb_stb(uint32_t a, uint32_t d, bool w, bool pt = false) 
 		: adr(a), dat(d), we(w), ack(false), err(false), passthrough(pt), zero(false), new_header(false) {};
 	};
@@ -527,23 +613,40 @@ private:
 EBslave *slave;
 
 extern "C" 
-void eb_simbridge_init(int stop_until_connected, int sdb_adr) {
-	slave = new EBslave(stop_until_connected, sdb_adr);
+void eb_simbridge_init(int stop_until_connected, int sdb_adr, int msi_addr_first, int msi_addr_last) {
+	slave = new EBslave(stop_until_connected, sdb_adr, msi_addr_first, msi_addr_last);
 }
 
 
 extern "C" 
-void eb_simbridge_control_out(char *cyc, char *stb, char *we, int *adr, int *dat, int *sel)
+void eb_simbridge_master_out(char *cyc, char *stb, char *we, int *adr, int *dat, int *sel)
 {
 	std_logic_t _cyc, _stb, _we;
-	slave->control_out(&_cyc,&_stb,&_we,adr,dat,sel);
+	slave->master_out(&_cyc,&_stb,&_we,adr,dat,sel);
 	*cyc = (char)_cyc;
 	*stb = (char)_stb;
 	*we  = (char)_we;
 }
 extern "C" 
-void eb_simbridge_control_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat)
+void eb_simbridge_master_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat)
 {
 	// std::cerr << "in" << std::endl;
-	slave->control_in(ack,err,rty,stall,dat);
+	slave->master_in(ack,err,rty,stall,dat);
+}
+
+
+extern "C" 
+void eb_simbridge_msi_slave_in(std_logic_t cyc, std_logic_t stb, std_logic_t we, int adr, int dat, int sel)
+{
+	slave->msi_slave_in(cyc,stb,we,adr,dat,sel);
+}
+extern "C" 
+void eb_simbridge_msi_slave_out(char *ack, char *err, char *rty, char *stall, int *dat)
+{
+	std_logic_t _ack, _err, _rty, _stall;
+	slave->msi_slave_out(&_ack,&_err,&_rty,&_stall,dat);
+	*ack = (char)_ack;
+	*err = (char)_err;
+	*rty = (char)_rty;
+	*stall = (char)_stall;
 }
