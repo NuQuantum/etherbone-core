@@ -36,6 +36,7 @@ public:
 		wb_stbs.clear();
 		wb_wait_for_acks.clear();
 		input_word_buffer.clear();
+		input_word_buffer2.clear();
 		output_word_buffer.clear();
 
 		pfds[0].fd = open("/dev/ptmx", O_RDWR );//| O_NONBLOCK);
@@ -149,8 +150,9 @@ public:
 				         value32 |= value[1]; value32 <<=8;
 				         value32 |= value[2]; value32 <<=8;
 				         value32 |= value[3]; 
-				std::cerr << "<= 0x" << std::hex << std::setw(8) << std::setfill('0') << (uint32_t)value32 << std::endl;
+				// std::cerr << "<= 0x" << std::hex << std::setw(8) << std::setfill('0') << (uint32_t)value32 << std::endl;
 				input_word_buffer.push_back(value32);
+				input_word_buffer2.push_back(value32);
 				result -= 4;
 				value  += 4; 
 				++word_count;
@@ -217,6 +219,7 @@ public:
 					         response |= (eb_flag_bca << 26); // response rff <= request rff
 					         response |= (eb_flag_rff << 25); // response wca <= request wca;
 
+
 					// if we have a write request, the response must be zero and a new header has to be inserted 
 					// in front of the read response (if there was any read request)
 					if (eb_wcount > 0) {
@@ -224,6 +227,8 @@ public:
 						response = 0;
 					}
 					wb_stbs.push_back(wb_stb(response,response,false,true)); // not a real strobe, just a pass-through
+					wb_stbs.back().comment = "header";
+
 					// std::cerr << "header " << std::hex << std::setw(8) << std::setfill('0') << word 
 					//           << "   response " << std::setw(8) << std::setfill('0') << response << std::endl;
 					if (eb_wcount > 0) {
@@ -459,22 +464,31 @@ public:
 
 	void send_output_buffer()
 	{
+		bool wrote_something = false;
 		// std::cerr << "send_output_buffer " << wb_wait_for_acks.size() << " " << output_word_buffer.size() << " " << word_count << std::endl;
 		if (wb_wait_for_acks.size() == 0 && output_word_buffer.size() >= word_count) {
 			std::vector<uint8_t> write_buffer;
 			while (output_word_buffer.size() > 0) {
 				--word_count;
-				uint32_t word = output_word_buffer.front();
+				uint32_t word_out = output_word_buffer.front();
+				uint32_t word_in  = input_word_buffer2.front();
 				output_word_buffer.pop_front();
-				std::cerr << " => 0x" << std::hex << std::setw(8) << std::setfill('0') << (uint32_t)word << std::endl;
+				input_word_buffer2.pop_front();
+				std::cerr << std::hex << std::setw(8) << std::setfill('0') << (uint32_t)word_in
+				          << " => 0x" << std::hex << std::setw(8) << std::setfill('0') << (uint32_t)word_out 
+				          << std::endl;
+				wrote_something = true;
 				for (int i = 0; i < 4; ++i) {
-					uint8_t val = word >> (8*(3-i));
+					uint8_t val = word_out >> (8*(3-i));
 					//std::cerr << "  >" << std::hex << std::setw(2) << std::setfill('0') << (uint32_t)val << std::endl;
 					//write(pfds[0].fd, (void*)&val, sizeof(val));
 					write_buffer.push_back(val);
 				}
 			}
 			write(pfds[0].fd, (void*)&write_buffer[0], write_buffer.size());
+			if (wrote_something) {
+				std::cerr << "----------------------" << std::endl;
+			}
 		}
 	}
 
@@ -539,6 +553,7 @@ public:
 private:
 	struct pollfd pfds[1];	
 	std::deque<uint32_t> input_word_buffer;
+	std::deque<uint32_t> input_word_buffer2; // only used to echo the input next to the output (not used for bridge logic)
 	std::deque<uint32_t> output_word_buffer;
 	bool eb_flag_bca;
 	bool eb_flag_rca;
@@ -598,6 +613,7 @@ private:
 		bool zero;
 		bool new_header;
 		uint32_t new_header_value;
+		std::string comment;
 		wb_stb(uint32_t a, uint32_t d, bool w, bool pt = false) 
 		: adr(a), dat(d), we(w), ack(false), err(false), passthrough(pt), zero(false), new_header(false) {};
 	};
