@@ -858,10 +858,11 @@ eb_status_t eb_sdb_find_by_identity_msi(eb_device_t device, uint64_t vendor_id, 
     if (sdb_static_base_addr != NULL) {
       sscanf(sdb_static_base_addr, "%lx", &base_addr);
     }
-    // leak!!
     struct sdb_static_crossbar *sdb_crossbar = sdb_static_crossbar_from_file(sdb_static_base_name, base_addr);
     // call static version of sdb_find_by_identity_msi
-    return sdb_static_find_by_identity_msi(sdb_crossbar, vendor_id, device_id, output, output_msi_first, output_msi_last, devices);
+    eb_status_t result = sdb_static_find_by_identity_msi(sdb_crossbar, vendor_id, device_id, output, output_msi_first, output_msi_last, devices);
+    sdb_static_crossbar_free(sdb_crossbar);
+    return result;
   }
   return eb_sdb_find_by_identity_real(device, vendor_id, device_id, 0, 0, 0, output, output_msi_first, output_msi_last, devices, *devices);
 }
@@ -874,10 +875,11 @@ eb_status_t eb_sdb_find_by_identity(eb_device_t device, uint64_t vendor_id, uint
     if (sdb_static_base_addr != NULL) {
       sscanf(sdb_static_base_addr, "%lx", &base_addr);
     }
-    // leak!!
     struct sdb_static_crossbar *sdb_crossbar = sdb_static_crossbar_from_file(sdb_static_base_name, base_addr);
     // call static version of sdb_find_by_identity
-    return sdb_static_find_by_identity(sdb_crossbar, vendor_id, device_id, output, devices);
+    eb_status_t result = sdb_static_find_by_identity(sdb_crossbar, vendor_id, device_id, output, devices);
+    sdb_static_crossbar_free(sdb_crossbar);
+    return result;
   }
   return eb_sdb_find_by_identity_real(device, vendor_id, device_id, 0, 0, 0, output, 0, 0, devices, 0);
 }
