@@ -72,6 +72,7 @@ struct eb_socket {
   
   eb_socket_aux_t aux;
   uint8_t widths;
+  uint8_t disable_all_timeouts;
 };
 
 /* Invert last_response, suitable for attaching to the end of first_response */

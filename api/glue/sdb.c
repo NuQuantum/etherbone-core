@@ -843,8 +843,7 @@ static eb_status_t eb_sdb_find_by_identity_real(
   
   *devices = record.fill_output;
   // intercept all timeouts if this environment variable is set
-  const char *eb_disable_all_timeouts = getenv("EB_DISABLE_ALL_TIMEOUTS");
-  if (eb_disable_all_timeouts != NULL && record.status == EB_TIMEOUT) {
+  if (getenv("EB_DISABLE_ALL_TIMEOUTS") != NULL && record.status == EB_TIMEOUT) {
       return EB_OK;
   }  
   return record.status;

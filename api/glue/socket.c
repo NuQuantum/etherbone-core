@@ -138,6 +138,10 @@ eb_status_t eb_socket_open(uint16_t abi_code, const char* port, eb_width_t suppo
   socket->last_response = EB_NULL;
   socket->widths = supported_widths;
   socket->aux = auxp;
+  socket->disable_all_timeouts = 0;
+  if (getenv("EB_DISABLE_ALL_TIMEOUTS") != NULL) {
+    socket->disable_all_timeouts = 1;
+  }
   
   aux = EB_SOCKET_AUX(auxp);
   aux->time_cache = 0;
@@ -386,7 +390,7 @@ int eb_socket_check(eb_socket_t socketp, uint32_t now, eb_user_data_t user, eb_d
   completed = 0;
   
   /* Step 1. Kill any expired timeouts */
-  if (getenv("EB_DISABLE_ALL_TIMEOUTS") == NULL) {
+  if (!socket->disable_all_timeouts) {
     while (socket->first_response != EB_NULL &&
            eb_socket_timeout(socketp) <= now) {
       /* Kill first */
