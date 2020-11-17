@@ -134,6 +134,9 @@ int eb_posix_udp_accept(struct eb_transport* transportp, struct eb_link* result_
 static struct sockaddr_storage eb_posix_udp_sa;
 static socklen_t eb_posix_udp_sa_len;
 
+static struct sockaddr_storage eb_posix_udp_da;
+static socklen_t eb_posix_udp_da_len;
+
 int eb_posix_udp_poll(struct eb_transport* transportp, struct eb_link* linkp, eb_user_data_t data, eb_descriptor_callback_t ready, uint8_t* buf, int len) {
   struct eb_posix_udp_transport* transport;
   int result;
@@ -149,6 +152,28 @@ int eb_posix_udp_poll(struct eb_transport* transportp, struct eb_link* linkp, eb
   if (transport->socket4 != -1 && (*ready)(data, transport->socket4, EB_DESCRIPTOR_IN)) {
     eb_posix_udp_sa_len = sizeof(eb_posix_udp_sa);
     result = recvfrom(transport->socket4, (char*)buf, len, MSG_DONTWAIT, (struct sockaddr*)&eb_posix_udp_sa, &eb_posix_udp_sa_len);
+    struct sockaddr_in *sout = (struct sockaddr_in *)&eb_posix_udp_da;
+    struct sockaddr_in *sin = (struct sockaddr_in *)&eb_posix_udp_sa;
+    unsigned long msk_rxip = sout->sin_addr.s_addr & sin->sin_addr.s_addr;
+    unsigned char *txip = (unsigned char *)&sout->sin_addr.s_addr;
+    unsigned char *rxip = (unsigned char *)&sin->sin_addr.s_addr;
+    unsigned char *mskip = (unsigned char *)&msk_rxip;
+    #ifdef PACKET_DEBUG
+    if(strncmp(txip, rxip, 4) != 0) {
+      fprintf(stderr, "Differing IPs for request and response detected\n");
+    }
+    #endif
+    if(strncmp(mskip, rxip, 4) != 0) {
+      #ifdef PACKET_DEBUG
+      fprintf(stderr, "This is no valid broadcast response. Dropping UDP frame\n");
+      #endif
+      return -1;
+    }
+    /*
+    printf("Outgoing IP: %d %d %d %d\n", txip[0], txip[1], txip[2], txip[3]);
+    printf("Answering IP: %d %d %d %d\n", rxip[0], rxip[1], rxip[2], rxip[3]);
+    printf("Masked Answering IP: %d %d %d %d\n", mskip[0], mskip[1], mskip[2], mskip[3]);
+    */
     if (result == -1 && !eb_posix_ip_ewouldblock()) return -1;
     if (result != -1) return result;
   }
@@ -188,8 +213,12 @@ void eb_posix_udp_send(struct eb_transport* transportp, struct eb_link* linkp, c
       eb_posix_ip_non_blocking(transport->socket6, 0);
       sendto(transport->socket6, (const char*)buf, len, 0, (struct sockaddr*)&eb_posix_udp_sa, eb_posix_udp_sa_len);
     } else {
+      
       eb_posix_ip_non_blocking(transport->socket4, 0);
       sendto(transport->socket4, (const char*)buf, len, 0, (struct sockaddr*)&eb_posix_udp_sa, eb_posix_udp_sa_len);
+      struct sockaddr_in *sin = (struct sockaddr_in *)&eb_posix_udp_sa;
+      unsigned char *ip = (unsigned char *)&sin->sin_addr.s_addr;
+      printf("Link L0 IP: %d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
     }
   } else {
     if (link->sa->ss_family == PF_INET6) {
@@ -198,6 +227,11 @@ void eb_posix_udp_send(struct eb_transport* transportp, struct eb_link* linkp, c
     } else {
       eb_posix_ip_non_blocking(transport->socket4, 0);
       sendto(transport->socket4, (const char*)buf, len, 0, (struct sockaddr*)link->sa, link->sa_len);
+      eb_posix_udp_da = *link->sa;
+      eb_posix_udp_da_len = link->sa_len;
+      struct sockaddr_in *sin = (struct sockaddr_in *)(link->sa);
+      unsigned char *ip = (unsigned char *)&sin->sin_addr.s_addr;
+      printf("Outgoing IP L1: %d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
     }
   }
 }
