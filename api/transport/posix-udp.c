@@ -28,7 +28,7 @@
 
 #define ETHERBONE_IMPL
 
-#define PACKET_DEBUG 1 
+//#define PACKET_DEBUG 1 
 
 #include "posix-ip.h"
 #include "posix-udp.h"
