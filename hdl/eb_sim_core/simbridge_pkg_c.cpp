@@ -291,13 +291,8 @@ public:
 								wb_stbs.push_back(wb_stb(error_shift_reg,error_shift_reg,false,true)); // not a real strobe, just a pass-through
 								error_shift_reg = 0; // clear the error shift register 
 							break;
-							case 0x8: 
-								// is sdb_adr here ...
-								std::cerr << "access to sdb_adr : " << eb_sdb_adr << std::endl;
-								wb_stbs.push_back(wb_stb(eb_sdb_adr,eb_sdb_adr,false,true)); // not a real strobe, just a pass-through
-							break;
 							case 0xc: 
-							    // ... or here ????
+							    // this should return the sdb address
 								wb_stbs.push_back(wb_stb(eb_sdb_adr,eb_sdb_adr,false,true)); // not a real strobe, just a pass-through
 							break;
 							case 0x2c: 
