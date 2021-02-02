@@ -13,6 +13,7 @@
 #include <vector>
 #include <iostream>
 #include <iomanip>
+#include <fstream>
 #include <deque>
 
 // std_logic values
@@ -78,6 +79,8 @@ public:
 		grantpt(pfds[0].fd);
 		unlockpt(pfds[0].fd);
 		state = EB_SLAVE_STATE_IDLE;
+		std::ofstream tmpfile("/tmp/simbridge-eb-device");
+		tmpfile << pts_name().substr(1) << std::endl;
 		std::cerr << "eb-device: " << pts_name() << std::endl;
 		if (_stop_until_connected) {
 			std::cerr << "waiting for client, simulation stopped ... ";
