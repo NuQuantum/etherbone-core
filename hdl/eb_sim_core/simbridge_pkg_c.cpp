@@ -180,8 +180,9 @@ public:
 	}
 
 
-	void master_out(std_logic_t *cyc, std_logic_t *stb, std_logic_t *we, int *adr, int *dat, int *sel) {
+	int master_out(std_logic_t *cyc, std_logic_t *stb, std_logic_t *we, int *adr, int *dat, int *sel) {
 		// std::cerr << "out " << state << std::endl;
+		int end_cyc = 0;
 
 		// std::cerr << "control_out" << std::endl;
 		*cyc = STD_LOGIC_0;
@@ -231,6 +232,7 @@ public:
 					}
 					wb_stbs.push_back(wb_stb(response,response,false,true)); // not a real strobe, just a pass-through
 					wb_stbs.back().comment = "header";
+					wb_stbs.back().end_cyc = eb_flag_cyc;
 
 					// std::cerr << "header " << std::hex << std::setw(8) << std::setfill('0') << word 
 					//           << "   response " << std::setw(8) << std::setfill('0') << response << std::endl;
@@ -254,12 +256,14 @@ public:
 					uint32_t base_write_adr;
 					if (next_word(base_write_adr)) {
 						wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
+						wb_stbs.back().end_cyc = eb_flag_cyc;
 						state = EB_SLAVE_STATE_EB_CONFIG_REST;
 					}
 				} else if (eb_rcount > 0) {
 					uint32_t base_ret_adr;
 					if (next_word(base_ret_adr)) {
 						wb_stbs.push_back(wb_stb(base_ret_adr,base_ret_adr,false,true)); // not a real strobe, just a pass-through
+						wb_stbs.back().end_cyc = eb_flag_cyc;
 						state = EB_SLAVE_STATE_EB_CONFIG_REST;
 					}
 				} else {
@@ -273,8 +277,10 @@ public:
 						--eb_wcount;
 						if (eb_wcount == 0) {
 							wb_stbs.push_back(wb_stb(new_header,new_header,false,true)); // not a real strobe, just a pass-through
+							wb_stbs.back().end_cyc = eb_flag_cyc;
 						} else {
 							wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
+							wb_stbs.back().end_cyc = eb_flag_cyc;
 						}
 						if (eb_wcount == 0) {
 							if (eb_rcount == 0) {
@@ -292,20 +298,25 @@ public:
 						switch(read_adr) {
 							case 0x0: 
 								wb_stbs.push_back(wb_stb(error_shift_reg,error_shift_reg,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 								error_shift_reg = 0; // clear the error shift register 
 							break;
 							case 0xc: 
 							    // this should return the sdb address
 								wb_stbs.push_back(wb_stb(eb_sdb_adr,eb_sdb_adr,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 							break;
 							case 0x2c: 
 								wb_stbs.push_back(wb_stb(0x1,0x1,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 							break;
 							case 0x34:
 								wb_stbs.push_back(wb_stb(eb_msi_adr_first,eb_msi_adr_first,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 							break;
 							case 0x3c:
 								wb_stbs.push_back(wb_stb(eb_msi_adr_last,eb_msi_adr_last,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 							break;
 							case 0x40: // msi_adr
 								if (msi_queue.size() > 0) {
@@ -319,12 +330,15 @@ public:
 									msi_cnt = 0;
 								}
 								wb_stbs.push_back(wb_stb(msi_adr,msi_adr,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 							break;
 							case 0x44: // msi_dat
 								wb_stbs.push_back(wb_stb(msi_dat,msi_dat,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 							break;
 							case 0x48:
 								wb_stbs.push_back(wb_stb(msi_cnt,msi_cnt,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 							break;
 
     // x"00000000"                                      when "01000", -- 0x20 = 0[010 00]00
@@ -341,6 +355,7 @@ public:
     // x"00000000"                                      when others;
 							default: 
 								wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
+								wb_stbs.back().end_cyc = eb_flag_cyc;
 								wb_stbs.back().err = true;
 						}
 						if (eb_rcount == 0) {
@@ -355,6 +370,7 @@ public:
 					if (next_word(base_write_adr)) {
 						// output_word_buffer.push_back(base_write_adr);
 						wb_stbs.push_back(wb_stb(0x0,0x0,false,true)); // not a real strobe, just a pass-through
+						wb_stbs.back().end_cyc = eb_flag_cyc;
 						// wb_stbs.back().zero = true;
 						state = EB_SLAVE_STATE_EB_WISHBONE_REST;
 					}
@@ -362,6 +378,7 @@ public:
 					if (next_word(base_ret_adr)) {
 						// output_word_buffer.push_back(base_ret_adr);
 						wb_stbs.push_back(wb_stb(base_ret_adr,base_ret_adr,false,true)); // not a real strobe, just a pass-through
+						wb_stbs.back().end_cyc = eb_flag_cyc;
 						state = EB_SLAVE_STATE_EB_WISHBONE_REST;
 					}
 				} else {
@@ -375,6 +392,7 @@ public:
 						--eb_wcount;
 						// put the write strobe into the queue
 						wb_stbs.push_back(wb_stb(base_write_adr,write_val,true));
+						wb_stbs.back().end_cyc = eb_flag_cyc;
 						if (eb_wcount == 0) {
 							wb_stbs.back().new_header = true;
 							wb_stbs.back().new_header_value = new_header;
@@ -402,6 +420,7 @@ public:
 						//           << "    rcnt " << std::dec << (int)eb_rcount << std::endl;
 						--eb_rcount;
 						wb_stbs.push_back(wb_stb(read_adr,0,false));
+						wb_stbs.back().end_cyc = eb_flag_cyc;
 						if (eb_rcount == 0) {
 							state = EB_SLAVE_STATE_EB_HEADER;
 						}
@@ -412,7 +431,7 @@ public:
 		}
 
 
-		handle_pass_through();
+		if (handle_pass_through()) end_cyc = 1;
 		send_output_buffer();
 
 		if (eb_flag_cyc) {
@@ -427,6 +446,9 @@ public:
 		*we = STD_LOGIC_0;
 		if (wb_stbs.size() > 0) {
 			strobe = true;
+			if (wb_stbs.front().end_cyc) {
+				end_cyc = 1;
+			}
 			if (wb_stbs.front().we) {
 				*we = STD_LOGIC_1;
 				write_enable = true;
@@ -439,12 +461,15 @@ public:
 		}
 		*stb = strobe ? STD_LOGIC_1 : STD_LOGIC_0;
 		*we  = write_enable ? STD_LOGIC_1 : STD_LOGIC_0;
+		return end_cyc;
 	}
 
-	void handle_pass_through() {
+	int handle_pass_through() {
+		int end_cyc = 0;
 		// std::cerr << "handle_pass_through " << wb_stbs.size() << std::endl;
 		while(wb_stbs.size() > 0 && wb_stbs.front().passthrough) {
 			wb_wait_for_acks.push_back(wb_stbs.front());
+			if (wb_stbs.front().end_cyc) end_cyc = 1;
 			wb_stbs.pop_front();
 		}
 		// std::cerr << "handle_pass_through " << wb_wait_for_acks.size() << std::endl;
@@ -457,7 +482,7 @@ public:
 			wb_wait_for_acks.pop_front();
 		}
 		// std::cerr << "handle_pass_through " << output_word_buffer.size() << std::endl;
-
+		return end_cyc;
 	}
 
 	void send_output_buffer()
@@ -491,12 +516,14 @@ public:
 	}
 
 	// should be called on falling_edge(clk)
-	void master_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat) {
+	int master_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat) {
 		// std::cerr << "in" << std::endl;
 		// std::cerr << "control_in wb_stbs.size() = " << std::dec << (int)wb_stbs.size() << std::endl;
-		handle_pass_through();
+		int end_cyc = 0;
+		if (handle_pass_through()) end_cyc = 1;
 		if (wb_stbs.size() > 0 && (strobe && stall == STD_LOGIC_0)) {
 			wb_wait_for_acks.push_back(wb_stbs.front());
+			if (wb_stbs.front().end_cyc) end_cyc = 1;
 			wb_stbs.pop_front();
 		}
 		if (wb_wait_for_acks.size() > 0 && (ack == STD_LOGIC_1 || err == STD_LOGIC_1)) {
@@ -519,7 +546,7 @@ public:
 			error_shift_reg = (error_shift_reg << 1) | err;
 		}		
 		send_output_buffer();
-
+		return end_cyc;
 	}
 
 
@@ -609,11 +636,12 @@ private:
 		bool err;
 		bool passthrough;
 		bool zero;
+		bool end_cyc;
 		bool new_header;
 		uint32_t new_header_value;
 		std::string comment;
 		wb_stb(uint32_t a, uint32_t d, bool w, bool pt = false) 
-		: adr(a), dat(d), we(w), ack(false), err(false), passthrough(pt), zero(false), new_header(false) {};
+		: adr(a), dat(d), we(w), ack(false), err(false), passthrough(pt), zero(false), end_cyc(false), new_header(false) {};
 	};
 	std::deque<wb_stb> wb_stbs;
 	std::deque<wb_stb> wb_wait_for_acks;
@@ -633,19 +661,19 @@ void eb_simbridge_init(int stop_until_connected, int sdb_adr, int msi_addr_first
 
 
 extern "C" 
-void eb_simbridge_master_out(char *cyc, char *stb, char *we, int *adr, int *dat, int *sel)
+void eb_simbridge_master_out(char *cyc, char *stb, char *we, int *adr, int *dat, int *sel, int *end_cyc)
 {
 	std_logic_t _cyc, _stb, _we;
-	slave->master_out(&_cyc,&_stb,&_we,adr,dat,sel);
+	*end_cyc = slave->master_out(&_cyc,&_stb,&_we,adr,dat,sel);
 	*cyc = (char)_cyc;
 	*stb = (char)_stb;
 	*we  = (char)_we;
 }
 extern "C" 
-void eb_simbridge_master_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat)
+void eb_simbridge_master_in(std_logic_t ack, std_logic_t err, std_logic_t rty, std_logic_t stall, int dat, int *end_cyc)
 {
 	// std::cerr << "in" << std::endl;
-	slave->master_in(ack,err,rty,stall,dat);
+	*end_cyc = slave->master_in(ack,err,rty,stall,dat);
 }
 
 

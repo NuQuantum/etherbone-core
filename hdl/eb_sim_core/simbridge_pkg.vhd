@@ -23,10 +23,10 @@ package simbridge_pkg is
   procedure eb_simbridge_init(stop_unitl_connected : in integer; sdb_adr, msi_addr_first, msi_addr_last : in integer);
   attribute foreign of eb_simbridge_init: procedure is "VHPIDIRECT eb_simbridge_init";
 
-  procedure eb_simbridge_master_out(cyc, stb, we : out  std_logic; adr, dat , sel: out integer);
+  procedure eb_simbridge_master_out(cyc, stb, we : out  std_logic; adr, dat , sel, end_cyc: out integer);
   attribute foreign of eb_simbridge_master_out : procedure is "VHPIDIRECT eb_simbridge_master_out";
 
-  procedure eb_simbridge_master_in(ack, err, rty, stall : in std_logic; dat : in integer);
+  procedure eb_simbridge_master_in(ack, err, rty, stall : in std_logic; dat : in integer; end_cyc : out integer);
   attribute foreign of eb_simbridge_master_in : procedure is "VHPIDIRECT eb_simbridge_master_in";
 
   procedure eb_simbridge_msi_slave_out(ack, err, rty, stall : out std_logic; dat : out integer);
@@ -44,12 +44,12 @@ package body simbridge_pkg is
     assert false report "VHPI" severity failure;
   end procedure;
 
-  procedure eb_simbridge_master_out(cyc, stb, we : out  std_logic; adr, dat , sel: out integer) is
+  procedure eb_simbridge_master_out(cyc, stb, we : out  std_logic; adr, dat , sel, end_cyc: out integer) is
   begin
     assert false report "VHPI" severity failure;
   end procedure;
 
-  procedure eb_simbridge_master_in(ack, err, rty, stall : in std_logic; dat : in integer) is
+  procedure eb_simbridge_master_in(ack, err, rty, stall : in std_logic; dat : in integer; end_cyc : out integer) is
   begin
     assert false report "VHPI" severity failure;
   end procedure;
