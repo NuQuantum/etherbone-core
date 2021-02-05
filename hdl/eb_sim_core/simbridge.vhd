@@ -35,6 +35,7 @@ begin
     constant stop_until_connected : integer := 1;
     variable stb_cnt : integer := 0;
     variable end_cycle : boolean := false;
+    variable end_cycle_request : boolean := false;
   begin
     master_o.cyc <= '0';
     master_o.stb <= '0';
@@ -64,7 +65,7 @@ begin
       eb_simbridge_msi_slave_in(msi_slave_i_cyc,msi_slave_i_stb,msi_slave_i_we,msi_slave_i_adr,msi_slave_i_dat,msi_slave_i_sel);
       eb_simbridge_master_out(master_o_cyc,master_o_stb,master_o_we,master_o_adr,master_o_dat,master_o_sel,master_o_end_cyc);
       if master_o_end_cyc /= 0 then
-        end_cycle := true;
+        end_cycle_request := true;
       end if;
       master_o.cyc <= master_o_cyc;
       master_o.stb <= master_o_stb;
@@ -88,9 +89,13 @@ begin
       if master_o_cyc = '1' and master_o_stb = '1' and master_i_stall = '1' and master_i_ack = '1' then stb_cnt := stb_cnt - 1; end if;
       if master_o_cyc = '1' and master_o_stb = '0'                          and master_i_ack = '1' then stb_cnt := stb_cnt - 1; end if;
       counter <= stb_cnt;
+      if stb_cnt > 0 and end_cycle_request then
+        end_cycle_request := false;
+        end_cycle := true;
+      end if;
       eb_simbridge_master_in(master_i_ack,master_i_err,master_i_rty,master_i_stall,master_i_dat,master_i_end_cyc);
       if master_i_end_cyc /= 0 then
-        end_cycle := true;
+        end_cycle_request := true;
       end if;
       eb_simbridge_msi_slave_out(msi_slave_o_ack,msi_slave_o_err,msi_slave_o_rty,msi_slave_o_stall,msi_slave_o_dat);
       if master_i.err = '1' and master_o_cyc = '1' then
