@@ -126,18 +126,26 @@ end entity;
 
 architecture rtl of simbridge_chopper is
   signal stall : std_logic := '0';
+  signal master_o_adr : std_logic_vector(31 downto 0) := (others => '0');
 begin
   master_o <= (cyc => slave_i.cyc,
              stb => slave_i.stb and not stall,
              we  => slave_i.we,
              sel => slave_i.sel,
-             adr => slave_i.adr,
+             adr => master_o_adr,
              dat => slave_i.dat);
   slave_o <= (ack   => master_i.ack,
             err   => master_i.err,
             rty   => master_i.rty,
             stall => master_i.stall or stall,
             dat   => master_i.dat);
+
+  master_o_adr <= slave_i.adr when master_i.stall = '0'
+                               and stall = '0'
+                               and slave_i.stb = '1'
+                               and slave_i.cyc = '1'
+              else master_o_adr;
+
   process 
   begin
     wait until rising_edge(clk_i);
