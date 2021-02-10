@@ -1,5 +1,6 @@
 #include "sdb-static.h"
 #include <stdio.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -270,8 +271,10 @@ eb_status_t sdb_static_find_by_identity(struct sdb_static_crossbar *crossbar, ui
 				// print_sdb_device(crossbar->records[i].device);
 				++output;
 				--capacity;
+				++*devices;
+			} else {
+				printf("sdb_static_find_by_identity: out of capacity\n");
 			}
-			++*devices;
 		} else if (crossbar->records[i].device.sdb_component.product.record_type == 0x02) {
 			// bridge found
 			struct sdb_static_crossbar * child = (struct sdb_static_crossbar*)crossbar->records[i].bridge.sdb_child;
@@ -287,7 +290,7 @@ eb_status_t sdb_static_find_by_identity(struct sdb_static_crossbar *crossbar, ui
 
 eb_status_t sdb_static_find_by_identity_msi(struct sdb_static_crossbar *crossbar, uint64_t vendor_id, uint32_t device_id, struct sdb_device *output, eb_address_t* output_msi_first, eb_address_t* output_msi_last, int *devices) {
 	int capacity = *devices;
-	eb_address_t msi_first, msi_last;
+	eb_address_t msi_first = 0, msi_last = 0;
 	sdb_static_find_by_identity(crossbar, vendor_id, device_id, output, devices);
 	// in order to find msi_first and msi_last, just take sdb_componnen.addr_fist and 
 	// sdb_component.addr_last from the first .msi record found... don't know if that is always correct...
