@@ -1,34 +1,35 @@
 /** @file posix-udp.c
- *  @brief This implements a UDP binding using posix sockets.
- *
- *  Copyright (C) 2011-2012 GSI Helmholtz Centre for Heavy Ion Research GmbH 
- *
- *  UDP links all share the same socket, only recording the target address.
- *  At the moment the target address is dynamically allocated. (!!! fixme)
- *
- *  @author Wesley W. Terpstra <w.terpstra@gsi.de>
- *
- *  @bug None!
- *
- *******************************************************************************
- *  This library is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU Lesser General Public
- *  License as published by the Free Software Foundation; either
- *  version 3 of the License, or (at your option) any later version.
- *
- *  This library is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *  Lesser General Public License for more details.
- *  
- *  You should have received a copy of the GNU Lesser General Public
- *  License along with this library. If not, see <http://www.gnu.org/licenses/>.
- *******************************************************************************
- */
+ *  *  @brief This implements a UDP binding using posix sockets.
+ *   *
+ *    *  Copyright (C) 2011-2012 GSI Helmholtz Centre for Heavy Ion Research GmbH 
+ *     *
+ *      *  UDP links all share the same socket, only recording the target address.
+ *       *  At the moment the target address is dynamically allocated. (!!! fixme)
+ *        *
+ *         *  @author Wesley W. Terpstra <w.terpstra@gsi.de>
+ *          *
+ *           *  @bug None!
+ *            *
+ *             *******************************************************************************
+ *              *  This library is free software; you can redistribute it and/or
+ *               *  modify it under the terms of the GNU Lesser General Public
+ *                *  License as published by the Free Software Foundation; either
+ *                 *  version 3 of the License, or (at your option) any later version.
+ *                  *
+ *                   *  This library is distributed in the hope that it will be useful,
+ *                    *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *                     *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *                      *  Lesser General Public License for more details.
+ *                       *  
+ *                        *  You should have received a copy of the GNU Lesser General Public
+ *                         *  License along with this library. If not, see <http://www.gnu.org/licenses/>.
+ *                          *******************************************************************************
+ *                           */
 
 #define ETHERBONE_IMPL
 
-#define PACKET_DEBUG 1 
+/* #define PACKET_DEBUG 1  */
+/* #define PROMISCOUS_DEBUG 1 */
 
 #include "posix-ip.h"
 #include "posix-udp.h"
@@ -39,6 +40,9 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef PACKET_DEBUG
+#include <stdio.h>
+#endif
+#ifdef PROMISCOUS_DEBUG
 #include <stdio.h>
 #endif
 
@@ -152,32 +156,20 @@ int eb_posix_udp_poll(struct eb_transport* transportp, struct eb_link* linkp, eb
   if (transport->socket4 != -1 && (*ready)(data, transport->socket4, EB_DESCRIPTOR_IN)) {
     eb_posix_udp_sa_len = sizeof(eb_posix_udp_sa);
     result = recvfrom(transport->socket4, (char*)buf, len, MSG_DONTWAIT, (struct sockaddr*)&eb_posix_udp_sa, &eb_posix_udp_sa_len);
+    /* Check for unsolicited incoming EB packets */
     struct sockaddr_in *sout = (struct sockaddr_in *)&eb_posix_udp_da;
     struct sockaddr_in *sin = (struct sockaddr_in *)&eb_posix_udp_sa;
-    unsigned long msk_rxip = sout->sin_addr.s_addr & sin->sin_addr.s_addr;
-    unsigned char *txip = (unsigned char *)&sout->sin_addr.s_addr;
-    unsigned char *rxip = (unsigned char *)&sin->sin_addr.s_addr;
-    unsigned char *mskip = (unsigned char *)&msk_rxip;
-    #ifdef PACKET_DEBUG
+    const char *txip = (const char *)&sout->sin_addr.s_addr;
+    const char *rxip = (const char *)&sin->sin_addr.s_addr;
+    
     if(strncmp(txip, rxip, 4) != 0) {
-      fprintf(stderr, "Differing IPs for request and response detected. Req: %d.%d.%d.%d Res: %d.%d.%d.%d", txip[0], txip[1], txip[2], txip[3], rxip[0], rxip[1], rxip[2], rxip[3]);
-    }
-    #endif
-    if(strncmp(mskip, rxip, 4) != 0) {
-      #ifdef PACKET_DEBUG
-      fprintf(stderr, "\n!This is no valid broadcast response. Dropping UDP frame!\n");
+      /* An unsolicited EB packet arrived. It does not belong in this EB stream, drop it */
+      #ifdef PROMISCOUS_DEBUG
+        fprintf(stderr, "Dropping unsolicited EB packet: Its src IP (%d.%d.%d.%d) does not match our request dst IP (%d.%d.%d.%d)\n", txip[0], txip[1], txip[2], txip[3], rxip[0], rxip[1], rxip[2], rxip[3]);
       #endif
+
       return -1;
-    } else {
-      #ifdef PACKET_DEBUG
-      fprintf(stderr, "\n");
-      #endif
     }
-    /*
-    printf("Outgoing IP: %d %d %d %d\n", txip[0], txip[1], txip[2], txip[3]);
-    printf("Answering IP: %d %d %d %d\n", rxip[0], rxip[1], rxip[2], rxip[3]);
-    printf("Masked Answering IP: %d %d %d %d\n", mskip[0], mskip[1], mskip[2], mskip[3]);
-    */
     if (result == -1 && !eb_posix_ip_ewouldblock()) return -1;
     if (result != -1) return result;
   }
@@ -220,9 +212,6 @@ void eb_posix_udp_send(struct eb_transport* transportp, struct eb_link* linkp, c
       
       eb_posix_ip_non_blocking(transport->socket4, 0);
       sendto(transport->socket4, (const char*)buf, len, 0, (struct sockaddr*)&eb_posix_udp_sa, eb_posix_udp_sa_len);
-      //struct sockaddr_in *sin = (struct sockaddr_in *)&eb_posix_udp_sa;
-      //unsigned char *ip = (unsigned char *)&sin->sin_addr.s_addr;
-      //printf("Link L0 IP: %d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
     }
   } else {
     if (link->sa->ss_family == PF_INET6) {
@@ -233,9 +222,6 @@ void eb_posix_udp_send(struct eb_transport* transportp, struct eb_link* linkp, c
       sendto(transport->socket4, (const char*)buf, len, 0, (struct sockaddr*)link->sa, link->sa_len);
       eb_posix_udp_da = *link->sa;
       eb_posix_udp_da_len = link->sa_len;
-      //struct sockaddr_in *sin = (struct sockaddr_in *)(link->sa);
-      //unsigned char *ip = (unsigned char *)&sin->sin_addr.s_addr;
-      //printf("Outgoing IP L1: %d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
     }
   }
 }
