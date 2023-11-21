@@ -29,12 +29,12 @@ public:
   EbWrapperImpl();
   ~EbWrapperImpl();
   
-  bool connect(const std::string& ebdevname);
+  bool connect(const std::string& ebdevname, eb_format_t busformat);
   bool disconnect(); //Close connection
-  //bool writeCycle(std::vector<unsigned> vVal) const;
-  void write(const unsigned addr, const unsigned value);
-  //std::vector<unsigned> readCycle(std::vector<unsigned> vAddr) const;
-  unsigned read(const unsigned addr);
+  void write(const unsigned addr, const unsigned value, eb_format_t busformat);
+  void writeCycle(const std::vector<unsigned> &addr, const std::vector<unsigned> &value, eb_format_t busformat) const;
+  unsigned read(const unsigned addr, eb_format_t busformat);
+  std::vector<unsigned long> readCycle(const std::vector<unsigned> &vAddr, eb_format_t busformat) const;
   unsigned findById(const unsigned long vendor, const unsigned id);
 };
 

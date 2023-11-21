@@ -1,14 +1,16 @@
 #include "ebwrapper_impl.h"
 
+//Standard bus format: EB_DATAX|EB_ADDRX
+
 EbWrapper::EbWrapperImpl::EbWrapperImpl() {}
 EbWrapper::EbWrapperImpl::~EbWrapperImpl() {}
 
-bool EbWrapper::EbWrapperImpl::connect(const std::string& dev) {
+bool EbWrapper::EbWrapperImpl::connect(const std::string& dev, eb_format_t busfmt) {
     ebdevname = dev;
     bool ret;
     try {
-      ebs.open(0, EB_DATAX|EB_ADDRX);
-      ebd.open(ebs, ebdevname.c_str(), EB_DATAX|EB_ADDRX, 3);
+      ebs.open(0, busfmt);
+      ebd.open(ebs, ebdevname.c_str(), busfmt, 3);
       ret = true;
     } catch (etherbone::exception_t const& ex) {
       ret = false;
@@ -29,32 +31,36 @@ bool EbWrapper::EbWrapperImpl::connect(const std::string& dev) {
     return ret;
   }
 
-  void EbWrapper::EbWrapperImpl::write(const unsigned addr, const unsigned value) {
-    ebd.write((eb_address_t)addr, EB_DATAX|EB_ADDRX, (eb_data_t)value);
+  void EbWrapper::EbWrapperImpl::write(const unsigned addr, const unsigned value, eb_format_t busfmt) {
+    ebd.write((eb_address_t)addr, busfmt, (eb_data_t)value);
   }
-  //std::vector<unsigned> readCycle(std::vector<unsigned> vAddr) const;
-  unsigned EbWrapper::EbWrapperImpl::read(const unsigned addr) {
+
+  unsigned EbWrapper::EbWrapperImpl::read(const unsigned addr, eb_format_t busfmt) {
     eb_data_t ret;
-    ebd.read((eb_address_t)addr, EB_DATAX|EB_ADDRX, (eb_data_t*)&ret);
+    ebd.read((eb_address_t)addr, busfmt, (eb_data_t*)&ret);
     return (unsigned)ret;
   }
-/*
-  void EbWrapper::EbWrapperImpl::write(const std::vector<unsigned> addr&, const std::vector<unsigned> value&) {
-    Cycle cyc;
 
+  void EbWrapper::EbWrapperImpl::writeCycle(const std::vector<unsigned> &addr, const std::vector<unsigned> &value, eb_format_t busfmt) const {
+    Cycle cyc;
     cyc.open(ebd);
-    if addr.size() != value.size() throw std::runtime_error("Address and value vectors must be the same size");
-    for (auto& [a, v] : zip(addr, value)) {cyc.write((eb_address_t)a, EB_DATAX|EB_ADDRX, (eb_data_t)v);}
+    //If address and data vector sizes don't match, use the smaller one
+    unsigned size = addr.size();
+    if (value.size() < size) size = value.size();
+    for (unsigned long i = 0; i < size; i++)
+      cyc.write((eb_address_t)addr[i], busfmt, (eb_data_t)value[i]);
     cyc.close();  
   }
 
-  //std::vector<unsigned> readCycle(std::vector<unsigned> vAddr) const;
-  unsigned EbWrapper::EbWrapperImpl::read(const unsigned addr) {
-    eb_data_t ret;
-    ebd.read((eb_address_t)addr, EB_DATAX|EB_ADDRX, (eb_data_t*)&ret);
-    return (unsigned)ret;
+  std::vector<unsigned long> EbWrapper::EbWrapperImpl::readCycle(const std::vector<unsigned> &vAddr, eb_format_t busfmt) const {
+    std::vector<unsigned long> result(vAddr.size(), 0);
+    Cycle cyc;
+    cyc.open(ebd);
+    for (unsigned long i = 0; i < result.size(); i++)
+      cyc.read(vAddr[i], busfmt, &(result[i]));
+    cyc.close();
+    return result;
   }
-  */
 
   unsigned EbWrapper::EbWrapperImpl::findById(const unsigned long vendor, const unsigned id) {
     std::vector<struct sdb_device> devs;

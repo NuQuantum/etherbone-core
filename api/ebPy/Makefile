@@ -1,4 +1,5 @@
 EB_PATH         = ..
+EB_PATH		= ../../../bel_projects/ip_cores/etherbone-core/api
 EB_INCPATH      = $(EB_PATH)/include
 BUILD_PATH      = .
 INC_PATH        = $(BUILD_PATH)/inc
@@ -6,8 +7,8 @@ SRC_PATH        = $(BUILD_PATH)/src
 EB_LIB          = etherbone
 
 #works with python 2 and 3. Set to your python lib and include directory
-PY_LIB          = python3.6m
-PY_INCPATH      = /usr/include/python3.6m
+PY_LIB          = python3.10
+PY_INCPATH      = /usr/include/python3.10
 
 PREFIX         ?= /usr/local
 INSTALLPATH     = $(PREFIX)/bin
