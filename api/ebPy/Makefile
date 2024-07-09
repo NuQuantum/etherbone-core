@@ -41,7 +41,7 @@ libebwrapper.so: $(T_OBJECTS)
 	$(T_CXX) $(T_CXXFLAGS) -shared -o $@ $^ $(T_LIBS) -l$(EB_LIB)
 
 _eb.so: $(T_OBJECTS) eb_wrap.o libebwrapper.so
-	$(T_CXX) $(T_CXXFLAGS) -shared -o $@ eb_wrap.o $(BUILD_PATH)/libebwrapper.so -l$(PY_LIB) -I$(PY_INCPATH) 
+	$(T_CXX) $(T_CXXFLAGS) -shared -o $@ eb_wrap.o libebwrapper.so -l$(PY_LIB) -I$(PY_INCPATH) 
 
 clean::
 	rm -rf $(T_OBJECTS) eb_wrap.o libebwrapper.so _eb.so eb_wrap.cxx eb.py eb.pyc __pycache__
