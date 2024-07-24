@@ -1,0 +1,16 @@
+---
+# SPDX-FileCopyrightText: 2024 CERN (home.cern)
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+version: '1.0.0'
+name: 'EtherBone Core'
+description: 'https://ohwr.org/project/etherbone-core/wikis/home'
+website: 'https://ohwr.org/project/etherbone-core'
+images:
+  - 'https://ohwr.org/project/etherbone-core/uploads/b301407fc043b1ab537e8763bc6022cd/system.jpg'
+  - 'https://ohwr.org/project/etherbone-core/uploads/4c176d2f9bc9c9639617b7c38411a8cf/software.jpg'
+documentation: 'https://ohwr.org/project/etherbone-core/wikis'
+issues: 'https://ohwr.org/project/etherbone-core/issues'
+newsfeed: 'https://ohwr.org/project/etherbone-core/wikis/news'
+
