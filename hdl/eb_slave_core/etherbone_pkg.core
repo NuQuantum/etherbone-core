@@ -4,6 +4,9 @@ description: WRPC Ethernbone VHDL Package
 
 filesets:
   rtl:
+    depend:
+      - ohwr:general-cores:wishbone_pkg
+      - ohwr:wrpc:wr_fabric_pkg
     files:
       - etherbone_pkg.vhd
     file_type: vhdlSource
